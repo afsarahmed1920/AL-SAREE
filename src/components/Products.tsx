@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useApp } from "../lib/app-context"
-import { getCachedCatalog, syncBranchCatalog, type CatalogProduct } from "../lib/catalog-cache"
+import { getCachedCatalog, syncBranchCatalog, updateCachedProduct, type CatalogProduct } from "../lib/catalog-cache"
 import {
   can,
   loadContext,
@@ -138,16 +138,52 @@ export default function Products({ branchCode }: { branchCode: string }) {
     }
   }
 
-  const afterSave = async () => {
+  const afterSave = async (saved: { id: string; code: string }, draft: ProductDraft) => {
     setForm(null)
     setNotice(navigator.onLine ? t("saved") : t("queuedOffline"))
-    if (navigator.onLine) {
-      try {
-        const fresh = await syncBranchCatalog(branchCode)
-        setCatalog(fresh.products)
-      } catch {
-        // The successful save remains valid; use the existing local catalog.
+    const activeContext = ctx
+    const branch = activeContext?.branches.find((item) => item.code === branchCode)
+    const branchDraft = branch ? draft.branches[branch.id] : null
+    if (activeContext && branch && branchDraft) {
+      const cached = await getCachedCatalog(branchCode).catch(() => null)
+      const previous = cached?.products.find((item) => item.product_id === saved.id)
+      let core = {
+        product_code: saved.code,
+        name_en: draft.nameEn.trim(),
+        name_ar: draft.nameAr.trim() || null,
+        description_en: draft.descEn.trim() || null,
+        description_ar: draft.descAr.trim() || null,
+        category_id: draft.categoryId || null,
       }
+      let images = previous?.images ?? []
+      if (navigator.onLine) {
+        const [productResult, imageResult] = await Promise.all([
+          supabase.from("products").select("product_code,name_en,name_ar,description_en,description_ar,category_id").eq("id", saved.id).maybeSingle(),
+          supabase.from("product_images").select("id,storage_path,image_url,is_primary").eq("product_id", saved.id).order("sort_order"),
+        ])
+        if (productResult.data) core = productResult.data
+        if (!imageResult.error && imageResult.data) {
+          images = imageResult.data.map((image) => ({ ...image, url: image.image_url }))
+        }
+      }
+      const category = activeContext.categories.find((item) => item.id === core.category_id)
+      const numberOrNull = (value: string) => value.trim() && Number.isFinite(Number(value)) ? Number(value) : null
+      const updated: CatalogProduct = {
+        ...previous,
+        product_id: saved.id,
+        ...core,
+        category_name_en: category?.name_en ?? (draft.newCategoryEn.trim() || null),
+        category_name_ar: category?.name_ar ?? (draft.newCategoryAr.trim() || null),
+        branch_code: branchDraft.branchCode.trim() || null,
+        track_stock: branchDraft.trackStock,
+        stock_quantity: branchDraft.trackStock ? (numberOrNull(branchDraft.stock) === null ? null : Math.round(Number(branchDraft.stock))) : null,
+        purchase_price: can.view(activeContext.profile, "purchase") ? numberOrNull(branchDraft.purchase) ?? undefined : previous?.purchase_price,
+        wholesale_price: can.view(activeContext.profile, "wholesale") ? numberOrNull(branchDraft.wholesale) ?? undefined : previous?.wholesale_price,
+        retail_price: can.view(activeContext.profile, "retail") ? numberOrNull(branchDraft.retail) ?? undefined : previous?.retail_price,
+        barcodes: draft.barcodes.map((barcode) => barcode.trim()).filter(Boolean),
+        images,
+      }
+      await updateCachedProduct(branchCode, updated, branchDraft.available).catch(() => false)
     }
     const cached = await getCachedCatalog(branchCode)
     if (cached) setCatalog(cached.products)
@@ -182,7 +218,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
           branches={ctx.branches}
           categories={ctx.categories}
           onCancel={() => setForm(null)}
-          onSaved={() => void afterSave()}
+          onSaved={(saved) => void afterSave(saved, form.draft)}
           onSticker={(draft, retail) =>
             setSticker({ name: draft.nameEn || draft.code, code: draft.code, barcodes: draft.barcodes, retail })
           }

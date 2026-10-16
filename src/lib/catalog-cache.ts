@@ -136,6 +136,47 @@ export async function getCachedCatalog(
   return value ? (JSON.parse(value) as CacheRecord) : null
 }
 
+export async function updateCachedProduct(
+  branchCode: string,
+  product: CatalogProduct,
+  available: boolean,
+) {
+  const cached = await getCachedCatalog(branchCode)
+  if (!cached) return false
+  const exists = cached.products.some((item) => item.product_id === product.product_id)
+  const products = !available
+    ? cached.products.filter((item) => item.product_id !== product.product_id)
+    : exists
+      ? cached.products.map((item) => item.product_id === product.product_id ? product : item)
+      : [...cached.products, product]
+  await setCachedCatalog(branchCode, products)
+  return true
+}
+
+export async function clearUserCatalogs(userId: string) {
+  const database = await openDatabase().catch(() => null)
+  if (database) {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(STORE_NAME, "readwrite")
+      const request = transaction.objectStore(STORE_NAME).openCursor()
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) return
+        if ((cursor.value as CacheRecord).userId === userId) cursor.delete()
+        cursor.continue()
+      }
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    }).finally(() => database.close())
+  }
+
+  const prefix = `al-saree-catalog:${userId}:`
+  for (let index = localStorage.length - 1; index >= 0; index--) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(prefix)) localStorage.removeItem(key)
+  }
+}
+
 export async function syncBranchCatalog(branchCode: string) {
   const { data: branch, error: branchError } = await supabase
     .from("branches")

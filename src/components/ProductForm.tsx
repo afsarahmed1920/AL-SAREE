@@ -79,7 +79,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
   branches: BranchRow[]
   categories: CategoryRow[]
   onCancel: () => void
-  onSaved: () => void
+  onSaved: (saved: { id: string; code: string }) => void
   onSticker: (draft: ProductDraft, retail: number | null) => void
 }) {
   const { t, lang } = useApp()
@@ -147,10 +147,10 @@ export default function ProductForm({ initial, original, profile, branches, cate
       if (!navigator.onLine) {
         const { enqueueSave } = await import("../lib/offline-queue")
         await enqueueSave({ draft, original, profile, branches })
+        onSaved({ id: draft.id, code: draft.code })
       } else {
-        await saveDraft(draft, original, profile, branches)
+        onSaved(await saveDraft(draft, original, profile, branches))
       }
-      onSaved()
     } catch (err) {
       const message = (err as { message?: string })?.message ?? ""
       setError(

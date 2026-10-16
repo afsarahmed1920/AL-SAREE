@@ -246,9 +246,10 @@ export default function Login() {
                   }}
                   className="mt-3 inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] text-[15px] font-medium text-white backdrop-blur-md transition hover:bg-white/[0.1] disabled:opacity-60"
                 >
-                  <Icon name="eye" className="size-5 text-[#ffb366]" />
+                  <Icon name="key" className="size-5 text-[#ffb366]" />
                   {t("usePasskey")}
                 </button>
+                <p className="mt-2 text-center text-xs leading-5 text-white/55">{t("passkeyLoginHint")}</p>
                 {passkeyErr && (
                   <p role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-300 backdrop-blur-md">
                     {t(passkeyErr === "cancelled" ? "passkeyLoginCancelled" : "passkeyLoginFailed")}

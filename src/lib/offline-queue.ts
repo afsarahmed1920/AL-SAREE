@@ -44,6 +44,16 @@ export async function listQueue(): Promise<QueuedSave[]> {
   return all.filter((item) => (item.userId ?? item.profile.id) === userId)
 }
 
+export async function clearUserQueue(userId: string) {
+  const all = await tx<QueuedSave[]>("readonly", (s) => s.getAll() as IDBRequest<QueuedSave[]>)
+  const pending = all.filter((item) => (item.userId ?? item.profile.id) === userId)
+  for (const item of pending) {
+    await tx("readwrite", (s) => s.delete(item.id))
+  }
+  if (pending.length) notify()
+  return pending.length
+}
+
 export async function enqueueSave(item: Omit<QueuedSave, "id" | "createdAt" | "userId">) {
   const { data } = await (await import("./supabase")).supabase.auth.getSession()
   const userId = data.session?.user.id

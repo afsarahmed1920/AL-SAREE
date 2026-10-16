@@ -390,6 +390,34 @@ async function verifyRegistration(request: Request) {
   return json({ verified: true })
 }
 
+async function listPasskeys(request: Request) {
+  const { service, profile } = await requireUser(request)
+  const { data, error } = await service
+    .from("user_passkeys")
+    .select("id,device_name,created_at")
+    .eq("user_id", profile.id)
+    .order("created_at", { ascending: false })
+    .limit(100)
+  if (error) throw new HttpError(503, "Could not load registered passkeys")
+  return json({ passkeys: data ?? [] })
+}
+
+async function deletePasskey(request: Request) {
+  const { service, profile } = await requireUser(request)
+  const input = await bodyJson(request)
+  if (!isUuid(input.id)) throw new HttpError(400, "Invalid passkey")
+  const { data, error } = await service
+    .from("user_passkeys")
+    .delete()
+    .eq("id", input.id)
+    .eq("user_id", profile.id)
+    .select("id")
+    .maybeSingle()
+  if (error) throw new HttpError(503, "Could not remove passkey")
+  if (!data) throw new HttpError(404, "Passkey not found")
+  return json({ removed: true })
+}
+
 async function authenticationOptions() {
   const service = serviceClient()
   const config = await passkeyConfig(service)
@@ -495,6 +523,8 @@ async function handle(request: Request) {
 
   if (path === "/passkey/register/options") return await registrationOptions(request)
   if (path === "/passkey/register/verify") return await verifyRegistration(request)
+  if (path === "/passkey/manage/list") return await listPasskeys(request)
+  if (path === "/passkey/manage/delete") return await deletePasskey(request)
   if (path === "/passkey/login/options") return await authenticationOptions()
   if (path === "/passkey/login/verify") return await verifyAuthentication(request)
 

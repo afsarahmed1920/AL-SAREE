@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 import LockScreen from "../components/LockScreen"
 import { lockMinutes } from "../components/SecurityCard"
-import { startQueueSync } from "../lib/offline-queue"
+import { clearUserQueue, listQueue, startQueueSync } from "../lib/offline-queue"
+import { clearUserCatalogs } from "../lib/catalog-cache"
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useParams } from "react-router"
 import { branches as fallbackBranches } from "../lib/data"
 import { supabase } from "../lib/supabase"
@@ -9,6 +10,7 @@ import Login from "../components/Login"
 import { useAuth } from "../lib/auth-context"
 import Shell, { type Page } from "../components/Shell"
 import Skeleton from "../components/Skeleton"
+import { useApp } from "../lib/app-context"
 
 const Dashboard = lazy(() => import("../components/Dashboard"))
 const Products = lazy(() => import("../components/Products"))
@@ -53,6 +55,7 @@ function LoginRoute() {
 }
 
 function Workspace() {
+  const { t } = useApp()
   const navigate = useNavigate()
   const params = useParams()
   const { session } = useAuth()
@@ -112,9 +115,24 @@ function Workspace() {
 
   const setPage = (nextPage: Page) =>
     navigate(nextPage === "dashboard" ? "/" : `/${nextPage}`)
-  const logout = () => {
+  const logout = async () => {
+    const { data: auth } = await supabase.auth.getSession()
+    const userId = auth.session?.user.id
+    const pending = userId ? await listQueue().catch(() => []) : []
+    if (pending.length) {
+      const message = t("signOutOfflineWarning").replace("{count}", String(pending.length))
+      if (!window.confirm(message)) return
+    }
     sessionStorage.removeItem("locked")
     setLocked(false)
+    if (userId) {
+      await Promise.allSettled([
+        clearUserQueue(userId),
+        clearUserCatalogs(userId),
+      ])
+      localStorage.removeItem(`products-ctx:${userId}`)
+    }
+    localStorage.removeItem("passkey-registered")
     void supabase.auth.signOut()
   }
 

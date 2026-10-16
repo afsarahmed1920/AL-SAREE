@@ -284,7 +284,7 @@ export async function saveDraft(
     if (error) throw error
   }
 
-  return id
+  return { id, code }
 }
 
 async function commitBarcodes(productId: string, next: string[], previous: string[]) {

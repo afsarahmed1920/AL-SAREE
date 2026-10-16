@@ -3,6 +3,12 @@ import { supabase } from "./supabase"
 
 const base = `${supabaseUrl}/functions/v1/make-server-8a5f868b/passkey`
 
+export type RegisteredPasskey = {
+  id: string
+  device_name: string | null
+  created_at: string | null
+}
+
 async function call<T>(path: string, body: unknown, token?: string): Promise<T> {
   const res = await fetch(`${base}/${path}`, {
     method: "POST",
@@ -31,8 +37,38 @@ export async function registerPasskey() {
   if (!token) throw new Error("NO_SESSION")
   const optionsJSON = await call<RegOptions>("register/options", {}, token)
   const response = await startRegistration({ optionsJSON })
-  await call("register/verify", { response, label: navigator.userAgent.slice(0, 80) }, token)
+  await call("register/verify", { response, label: passkeyDeviceLabel() }, token)
   localStorage.setItem("passkey-registered", "1")
+}
+
+function passkeyDeviceLabel() {
+  const ua = navigator.userAgent
+  const platform = /android/i.test(ua) ? "Android"
+    : /iphone|ipad|ipod/i.test(ua) ? "iPhone or iPad"
+      : /macintosh|mac os/i.test(ua) ? "Mac"
+        : /windows/i.test(ua) ? "Windows PC"
+          : /linux/i.test(ua) ? "Linux device"
+            : "this device"
+  const browser = /edg\//i.test(ua) ? "Edge"
+    : /firefox\//i.test(ua) ? "Firefox"
+      : /chrome\//i.test(ua) ? "Chrome"
+        : /safari\//i.test(ua) ? "Safari"
+          : "Browser"
+  return `${browser} on ${platform}`.slice(0, 80)
+}
+
+export async function listPasskeys() {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error("NO_SESSION")
+  return call<{ passkeys: RegisteredPasskey[] }>("manage/list", {}, token).then((result) => result.passkeys)
+}
+
+export async function removePasskey(id: string) {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error("NO_SESSION")
+  return call<{ removed: boolean }>("manage/delete", { id }, token)
 }
 
 /** Signs in with a discoverable passkey and returns the username. */
