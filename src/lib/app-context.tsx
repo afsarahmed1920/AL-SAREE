@@ -356,6 +356,8 @@ const dict = {
   addPasskey: { en: "Add passkey on this device", ar: "إضافة مفتاح مرور لهذا الجهاز" },
   passkeyAdded: { en: "Passkey added. You can now sign in with it.", ar: "تمت إضافة مفتاح المرور." },
   passkeyFailed: { en: "Passkey failed", ar: "فشل مفتاح المرور" },
+  passkeyLoginFailed: { en: "Passkey sign-in failed. Try again or use your password.", ar: "تعذّر الدخول بمفتاح المرور. حاول مرة أخرى أو استخدم كلمة المرور." },
+  passkeyLoginCancelled: { en: "No passkey was found or the prompt was canceled. Try again or use your password.", ar: "لم يتم العثور على مفتاح مرور أو تم إلغاء الطلب. حاول مرة أخرى أو استخدم كلمة المرور." },
   passkeyUnsupported: { en: "This browser does not support passkeys.", ar: "هذا المتصفح لا يدعم مفاتيح المرور." },
   autoLock: { en: "Auto-lock when idle", ar: "قفل تلقائي عند الخمول" },
   minutes: { en: "min", ar: "دقيقة" },

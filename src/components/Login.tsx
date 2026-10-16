@@ -23,6 +23,7 @@ export default function Login() {
   const [u, setU] = useState("")
   const [p, setP] = useState("")
   const [err, setErr] = useState(false)
+  const [passkeyErr, setPasskeyErr] = useState<"failed" | "cancelled" | null>(null)
   const [busy, setBusy] = useState(false)
   const [show, setShow] = useState(false)
   const [modal, setModal] = useState<null | "privacy" | "terms">(null)
@@ -34,6 +35,7 @@ export default function Login() {
     e.preventDefault()
     setBusy(true)
     setErr(false)
+    setPasskeyErr(null)
     const username = u.trim().toLowerCase()
     const { error } = await supabase.auth.signInWithPassword({
       email: toAuthEmail(username),
@@ -224,27 +226,37 @@ export default function Login() {
               </span>
             </button>
 
-            {passkeySupported() && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  setErr(false)
-                  setBusy(true)
-                  try {
-                    await signInWithPasskey()
-                    finishLogin()
-                  } catch (e) {
-                    if ((e as Error)?.name !== "NotAllowedError") setErr(true)
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-                className="mt-3 inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] text-[15px] font-medium text-white backdrop-blur-md transition hover:bg-white/[0.1] disabled:opacity-60"
-              >
-                <Icon name="eye" className="size-5 text-[#ffb366]" />
-                {t("usePasskey")}
-              </button>
+            {passkeySupported() ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setErr(false)
+                    setPasskeyErr(null)
+                    setBusy(true)
+                    try {
+                      await signInWithPasskey()
+                      finishLogin()
+                    } catch (e) {
+                      setPasskeyErr((e as Error)?.name === "NotAllowedError" ? "cancelled" : "failed")
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                  className="mt-3 inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] text-[15px] font-medium text-white backdrop-blur-md transition hover:bg-white/[0.1] disabled:opacity-60"
+                >
+                  <Icon name="eye" className="size-5 text-[#ffb366]" />
+                  {t("usePasskey")}
+                </button>
+                {passkeyErr && (
+                  <p role="alert" className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-300 backdrop-blur-md">
+                    {t(passkeyErr === "cancelled" ? "passkeyLoginCancelled" : "passkeyLoginFailed")}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p role="status" className="mt-3 text-center text-sm text-white/55">{t("passkeyUnsupported")}</p>
             )}
           </form>
         </div>

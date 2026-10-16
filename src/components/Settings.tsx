@@ -137,6 +137,8 @@ export default function Settings() {
         <p className="mt-1 text-sm text-ink2">{t("settingsSub")}</p>
       </div>
 
+      <SecurityCard />
+
       {msg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${msg.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-red-500/30 bg-red-500/10 text-red-500"}`}>
           {msg.text}
