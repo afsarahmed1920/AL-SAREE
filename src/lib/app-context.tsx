@@ -21,8 +21,8 @@ const dict = {
   password: { en: "Password", ar: "كلمة المرور" },
   signOut: { en: "Sign out", ar: "تسجيل الخروج" },
   signOutOfflineWarning: {
-    en: "You have {count} unsynced offline edit(s). Signing out will delete those edits and this account's offline catalog from this device. Continue?",
-    ar: "لديك {count} تعديلات دون اتصال لم تتم مزامنتها. سيؤدي تسجيل الخروج إلى حذفها وحذف كتالوج هذا الحساب من هذا الجهاز. هل تريد المتابعة؟",
+    en: "You have {count} unsynced offline edit(s) or an active stock count. Signing out will delete this offline work and this account's cached catalog from this device. Continue?",
+    ar: "لديك {count} تعديلات دون اتصال لم تتم مزامنتها أو جرد مخزون نشط. سيؤدي تسجيل الخروج إلى حذف هذه البيانات والكتالوج المخزن لهذا الحساب من هذا الجهاز. هل تريد المتابعة؟",
   },
   badLogin: {
     en: "Wrong username or password.",

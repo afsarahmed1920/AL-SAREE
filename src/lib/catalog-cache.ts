@@ -155,25 +155,28 @@ export async function updateCachedProduct(
 
 export async function clearUserCatalogs(userId: string) {
   const database = await openDatabase().catch(() => null)
-  if (database) {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, "readwrite")
-      const request = transaction.objectStore(STORE_NAME).openCursor()
-      request.onsuccess = () => {
-        const cursor = request.result
-        if (!cursor) return
-        if ((cursor.value as CacheRecord).userId === userId) cursor.delete()
-        cursor.continue()
-      }
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () => reject(transaction.error)
-    }).finally(() => database.close())
-  }
-
-  const prefix = `al-saree-catalog:${userId}:`
-  for (let index = localStorage.length - 1; index >= 0; index--) {
-    const key = localStorage.key(index)
-    if (key?.startsWith(prefix)) localStorage.removeItem(key)
+  try {
+    if (database) {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(STORE_NAME, "readwrite")
+        const request = transaction.objectStore(STORE_NAME).openCursor()
+        request.onsuccess = () => {
+          const cursor = request.result
+          if (!cursor) return
+          if ((cursor.value as CacheRecord).userId === userId) cursor.delete()
+          cursor.continue()
+        }
+        transaction.oncomplete = () => resolve()
+        transaction.onerror = () => reject(transaction.error)
+      })
+    }
+  } finally {
+    database?.close()
+    const prefix = `al-saree-catalog:${userId}:`
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index)
+      if (key?.startsWith(prefix)) localStorage.removeItem(key)
+    }
   }
 }
 

@@ -119,7 +119,17 @@ function Workspace() {
     const { data: auth } = await supabase.auth.getSession()
     const userId = auth.session?.user.id
     const pending = userId ? await listQueue().catch(() => []) : []
-    if (pending.length) {
+    const stockKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter((key): key is string => !!key?.startsWith("stock-count:"))
+    const hasStockCount = stockKeys.some((key) => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) ?? "null") as { counts?: Record<string, number> } | null
+        return Object.keys(saved?.counts ?? {}).length > 0
+      } catch {
+        return false
+      }
+    })
+    if (pending.length || hasStockCount) {
       const message = t("signOutOfflineWarning").replace("{count}", String(pending.length))
       if (!window.confirm(message)) return
     }
@@ -132,6 +142,7 @@ function Workspace() {
       ])
       localStorage.removeItem(`products-ctx:${userId}`)
     }
+    stockKeys.forEach((key) => localStorage.removeItem(key))
     localStorage.removeItem("passkey-registered")
     void supabase.auth.signOut()
   }
