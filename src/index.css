@@ -1,0 +1,341 @@
+@import url('https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  .app-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    display: block;
+  }
+}
+
+.mobile-dock {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in oklab, var(--surface-primary) 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border-interactive) 65%, transparent);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--text-primary) 5%, transparent) inset,
+    0 16px 40px -12px color-mix(in oklab, var(--primary-dark) 30%, transparent);
+  animation: dock-reveal 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.mobile-dock .dock-tab {
+  transition: transform 200ms ease, color 200ms ease;
+}
+.mobile-dock .dock-tab:active {
+  transform: scale(0.92);
+}
+.mobile-dock .dock-tab-icon,
+.mobile-dock .dock-scan-tile {
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mobile-dock .dock-tab:hover .dock-tab-icon {
+  transform: translateY(-2px);
+}
+.mobile-dock .dock-tab[aria-current="page"] .dock-tab-icon,
+.mobile-dock .dock-scan[aria-current="page"] .dock-scan-tile {
+  animation: dock-icon-settle 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.mobile-dock .dock-selection {
+  animation: dock-selection-in 250ms ease-out both;
+}
+@keyframes dock-reveal {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes dock-icon-settle {
+  0% { transform: translateY(0) scale(0.9); }
+  55% { transform: translateY(-3px) scale(1.08); }
+  100% { transform: translateY(-1px) scale(1); }
+}
+@keyframes dock-selection-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-dock,
+  .mobile-dock .dock-tab,
+  .mobile-dock .dock-tab-icon,
+  .mobile-dock .dock-scan-tile,
+  .mobile-dock .dock-selection {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+.dock-content {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .dock-content { padding-bottom: 2rem; }
+}
+
+:root {
+  --bg-app: #f8fafc;
+  --surface-primary: #ffffff;
+  --surface-secondary: #e6e9ef;
+  --primary-main: #1e3a8a;
+  --primary-dark: #0d1426;
+  --accent-main: #ff8a00;
+  --text-primary: #0d1426;
+  --text-secondary: #475569;
+  --text-on-primary: #ffffff;
+  --border-subdued: #e2e8f0;
+  --border-interactive: #cbd5e1;
+  --border-focus: #1e3a8a;
+}
+
+.dark {
+  --bg-app: #070b14;
+  --surface-primary: #0d1426;
+  --surface-secondary: #162038;
+  --primary-main: #3b82f6;
+  --primary-dark: #60a5fa;
+  --accent-main: #ff8a00;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-on-primary: #ffffff;
+  --border-subdued: #1e293b;
+  --border-interactive: #334155;
+  --border-focus: #3b82f6;
+}
+
+@theme inline {
+  --color-app: var(--bg-app);
+  --color-surface: var(--surface-primary);
+  --color-surface2: var(--surface-secondary);
+  --color-brand: var(--primary-main);
+  --color-brand-deep: var(--primary-dark);
+  --color-accent: var(--accent-main);
+  --color-ink: var(--text-primary);
+  --color-ink2: var(--text-secondary);
+  --color-on-brand: var(--text-on-primary);
+  --color-line: var(--border-subdued);
+  --color-line2: var(--border-interactive);
+  --color-focus: var(--border-focus);
+  --font-display: 'Readex Pro', 'IBM Plex Sans Arabic', sans-serif;
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  transition: background 0.2s;
+}
+
+[dir='rtl'] body {
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-main);
+  color: #0d1426;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+  }
+}
+
+/* Login page motion */
+@keyframes lg-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(60px, -40px) scale(1.1); }
+  66% { transform: translate(-40px, 50px) scale(0.95); }
+}
+@keyframes lg-rise-k { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes lg-card-k { from { opacity: 0; transform: translateY(24px) scale(0.97); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes lg-spin-k { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes lg-float-k { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes lg-shine-k { to { background-position: 200% center; } }
+@keyframes lg-spark-k { 0%, 100% { opacity: 0; transform: translateY(0); } 50% { opacity: 0.8; transform: translateY(-30px); } }
+@keyframes lg-shake-k { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.lg-blob { animation: lg-drift 18s ease-in-out infinite; }
+.lg-blob-2 { animation-duration: 22s; animation-direction: reverse; }
+.lg-blob-3 { animation-duration: 26s; }
+.lg-rise { animation: lg-rise-k 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lg-card-in { animation: lg-card-k 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lg-spin { animation: lg-spin-k 24s linear infinite; will-change: transform; }
+.lg-float { animation: lg-float-k 8s ease-in-out infinite; }
+.lg-shine { background-size: 200% auto; animation: lg-shine-k 4s linear infinite; }
+.lg-spark { animation: lg-spark-k 7s ease-in-out infinite; }
+.lg-shake { animation: lg-shake-k 0.4s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .lg-blob, .lg-rise, .lg-card-in, .lg-spin, .lg-float, .lg-shine, .lg-spark, .lg-shake { animation: none; }
+}
+
+/* ===== Premium app layer ===== */
+.app-ambient {
+  background:
+    radial-gradient(40rem 30rem at 0% 0%, rgba(59, 130, 246, 0.12), transparent 60%),
+    radial-gradient(35rem 28rem at 100% 10%, rgba(255, 138, 0, 0.08), transparent 60%),
+    radial-gradient(40rem 30rem at 60% 100%, rgba(139, 92, 246, 0.08), transparent 60%);
+}
+.dark .app-ambient {
+  background:
+    radial-gradient(40rem 30rem at 0% 0%, rgba(59, 130, 246, 0.16), transparent 60%),
+    radial-gradient(35rem 28rem at 100% 10%, rgba(255, 138, 0, 0.08), transparent 60%),
+    radial-gradient(40rem 30rem at 60% 100%, rgba(139, 92, 246, 0.12), transparent 60%);
+}
+.glass {
+  background: color-mix(in oklab, var(--surface-primary) 60%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border-interactive) 55%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+.glass-strong {
+  background: color-mix(in oklab, var(--surface-primary) 72%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border-interactive) 50%, transparent);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 20px 50px -20px rgba(13, 20, 38, 0.25);
+}
+.dark .glass-strong {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 20px 50px -20px rgba(0, 0, 0, 0.7);
+}
+.premium-card,
+main .rounded-2xl.border.bg-surface {
+  background: color-mix(in oklab, var(--surface-primary) 82%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border-subdued) 80%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 12px 32px -18px rgba(13, 20, 38, 0.22);
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s;
+}
+.dark .premium-card,
+.dark main .rounded-2xl.border.bg-surface {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px -18px rgba(0, 0, 0, 0.8);
+}
+.premium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 22px 44px -20px rgba(30, 58, 138, 0.35);
+}
+main button.bg-brand,
+main button.bg-accent {
+  box-shadow: 0 8px 20px -10px currentColor;
+  transition: transform 0.25s, filter 0.25s, box-shadow 0.25s;
+}
+main button.bg-brand:hover,
+main button.bg-accent:hover { transform: translateY(-1px); }
+main input:not([type="checkbox"]):not([type="radio"]):focus,
+main select:focus,
+main textarea:focus {
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--border-focus) 18%, transparent);
+}
+
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes stagger-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes bar-k { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes orb-k { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-30px, 20px); } }
+@keyframes fab-k { 0%, 100% { box-shadow: 0 12px 28px -6px rgba(255, 138, 0, 0.45); } 50% { box-shadow: 0 12px 36px -2px rgba(255, 138, 0, 0.65); } }
+.page-enter { animation: page-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger { animation: stagger-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.bar-grow { transform-origin: left; animation: bar-k 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+[dir='rtl'] .bar-grow { transform-origin: right; }
+.hero-orb { animation: orb-k 16s ease-in-out infinite; }
+.scan-fab { animation: fab-k 3.5s ease-in-out infinite; }
+.nav-pill { animation: page-in 0.35s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .stagger, .bar-grow, .hero-orb, .scan-fab, .nav-pill { animation: none; }
+  .premium-card:hover { transform: none; }
+}
+
+/* Bottom sheet & lock screen */
+.sheet-up { animation: sheet-up 340ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sheet-fade { animation: sheet-fade 240ms ease-out both; }
+.lock-in { animation: sheet-fade 300ms ease-out both; }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet-up, .sheet-fade, .lock-in { animation: none; }
+}
+
+/* ---------- Responsive & cross-browser hardening ---------- */
+/* Only body + clip: avoids creating a scroll container that would break the sticky header. */
+body { max-width: 100%; overflow-x: hidden; }
+@supports (overflow: clip) { body { overflow-x: clip; } }
+#root { min-height: 100vh; min-height: 100dvh; }
+img, video, canvas, svg { max-width: 100%; }
+/* Long product names, codes and URLs must wrap instead of pushing the layout wider. */
+h1, h2, h3, p, dd, li { overflow-wrap: anywhere; }
+.min-h-dvh { min-height: 100vh; min-height: 100dvh; }
+
+/* Safe areas: notch / Dynamic Island / home indicator, incl. landscape. */
+.safe-top { padding-top: calc(0.75rem + env(safe-area-inset-top, 0px)); }
+.safe-x {
+  padding-left: max(var(--safe-pad, 0px), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--safe-pad, 0px), env(safe-area-inset-right, 0px));
+}
+header.safe-x { --safe-pad: 0.75rem; }
+main.safe-x { --safe-pad: 1rem; }
+@media (min-width: 1024px) {
+  header.safe-x { --safe-pad: 1.5rem; }
+  main.safe-x { --safe-pad: 2rem; }
+}
+.mobile-dock {
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+/* Calculator drawer sits above the floating dock on mobile. */
+.calc-drawer { bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px)); }
+.calc-drawer > :last-child { min-height: 0; overflow-y: auto; }
+@media (min-width: 1024px) { .calc-drawer { bottom: 1rem; } }
+
+/* iOS Safari zooms into inputs under 16px; keep them at 16px on touch screens. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
+}
+
+/* Very small phones (iPhone SE / 320px Androids). */
+@media (max-width: 360px) {
+  .mobile-dock { height: 4.5rem; padding-inline: 0.25rem; }
+  .mobile-dock .dock-tab span:last-child { font-size: 10px; }
+  .mobile-dock .dock-scan-tile { width: 2.5rem; height: 2.5rem; }
+}
+/* Short landscape phones: keep the dock compact. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .mobile-dock { height: 3.75rem; }
+  .mobile-dock .dock-tab span:last-child { display: none; }
+  .dock-content { padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
+  .calc-drawer { bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Browsers without color-mix / backdrop-filter (older Safari, Samsung Internet, Firefox ESR). */
+@supports not (background: color-mix(in oklab, red 50%, transparent)) {
+  .mobile-dock { background: var(--surface-primary); border-color: rgba(127, 127, 127, 0.25); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .glass-strong { background: var(--surface-primary) !important; }
+}
