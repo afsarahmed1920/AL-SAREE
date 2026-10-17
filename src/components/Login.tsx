@@ -16,7 +16,12 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
-  const finishLogin = () => navigate(from?.startsWith("/") ? from : "/", { replace: true })
+  const [sessionExpired, setSessionExpired] = useState(() => localStorage.getItem("al-saree-session-expired") === "1")
+  const finishLogin = () => {
+    localStorage.removeItem("al-saree-session-expired")
+    setSessionExpired(false)
+    navigate(from?.startsWith("/") ? from : "/", { replace: true })
+  }
   const { t, lang } = useApp()
   const settings = useSettings()
   const companyName = useCompanyName()
@@ -27,6 +32,19 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [show, setShow] = useState(false)
   const [modal, setModal] = useState<null | "privacy" | "terms">(null)
+  const usePasskey = async () => {
+    setErr(false)
+    setPasskeyErr(null)
+    setBusy(true)
+    try {
+      await signInWithPasskey()
+      finishLogin()
+    } catch (e) {
+      setPasskeyErr((e as Error)?.name === "NotAllowedError" ? "cancelled" : "failed")
+    } finally {
+      setBusy(false)
+    }
+  }
   const legalText = modal
     ? settings[`${modal === "privacy" ? "privacy" : "terms"}_${lang}` as "privacy_en"]
     : ""
@@ -214,6 +232,11 @@ export default function Login() {
                 {t("badLogin")}
               </p>
             )}
+            {sessionExpired && (
+              <p role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2.5 text-sm text-amber-100">
+                {t("sessionExpired")}
+              </p>
+            )}
 
             <button
               disabled={busy}
@@ -231,23 +254,20 @@ export default function Login() {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={async () => {
-                    setErr(false)
-                    setPasskeyErr(null)
-                    setBusy(true)
-                    try {
-                      await signInWithPasskey()
-                      finishLogin()
-                    } catch (e) {
-                      setPasskeyErr((e as Error)?.name === "NotAllowedError" ? "cancelled" : "failed")
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
+                  onClick={() => void usePasskey()}
                   className="mt-3 inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] text-[15px] font-medium text-white backdrop-blur-md transition hover:bg-white/[0.1] disabled:opacity-60"
                 >
-                  <Icon name="key" className="size-5 text-[#ffb366]" />
-                  {t("usePasskey")}
+                  <Icon name="fingerprint" className="size-5 text-[#ffb366]" />
+                  {t("useFingerprint")}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void usePasskey()}
+                  className="mt-2 inline-flex h-[50px] w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] text-[15px] font-medium text-white backdrop-blur-md transition hover:bg-white/[0.1] disabled:opacity-60"
+                >
+                  <Icon name="face" className="size-5 text-[#ffb366]" />
+                  {t("useFaceId")}
                 </button>
                 <p className="mt-2 text-center text-xs leading-5 text-white/55">{t("passkeyLoginHint")}</p>
                 {passkeyErr && (

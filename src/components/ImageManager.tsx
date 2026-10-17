@@ -2,6 +2,7 @@ import { useRef, useState } from "react"
 import { useApp } from "../lib/app-context"
 import { makeDraftImage, type DraftImage } from "../lib/products"
 import Icon from "./Icon"
+import ImageEditor from "./ImageEditor"
 
 const tool =
   "grid size-8 place-items-center rounded-md bg-black/60 text-white backdrop-blur transition hover:bg-black/80 disabled:opacity-30"
@@ -18,6 +19,7 @@ export default function ImageManager({ images, onChange, disabled }: {
   const replaceKey = useRef<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
 
   const normalise = (list: DraftImage[]) =>
     list.map((image, index) => ({
@@ -27,22 +29,27 @@ export default function ImageManager({ images, onChange, disabled }: {
 
   const add = async (files: FileList | null) => {
     if (!files?.length) return
-    setBusy(true)
-    try {
-      const added = await Promise.all([...files].map(makeDraftImage))
-      onChange(normalise([...images, ...added]))
-    } finally {
-      setBusy(false)
-    }
+    replaceKey.current = null
+    setPendingFiles([...files])
   }
 
   const replace = async (files: FileList | null) => {
     const key = replaceKey.current
     if (!files?.[0] || !key) return
+    setPendingFiles([files[0]])
+  }
+
+  const applyEditedImage = async (blob: Blob) => {
+    const file = pendingFiles[0]
+    if (!file) return
     setBusy(true)
     try {
-      const fresh = await makeDraftImage(files[0])
-      onChange(images.map((i) => (i.key === key ? { ...fresh, is_primary: i.is_primary } : i)))
+      const fresh = await makeDraftImage(new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" }))
+      const key = replaceKey.current
+      if (key) onChange(images.map((image) => image.key === key ? { ...fresh, is_primary: image.is_primary } : image))
+      else onChange(normalise([...images, fresh]))
+      setPendingFiles((files) => files.slice(1))
+      if (key) replaceKey.current = null
     } finally {
       setBusy(false)
     }
@@ -127,6 +134,13 @@ export default function ImageManager({ images, onChange, disabled }: {
             <Icon name="x" />
           </button>
         </div>
+      )}
+      {pendingFiles[0] && (
+        <ImageEditor
+          file={pendingFiles[0]}
+          onCancel={() => { setPendingFiles([]); replaceKey.current = null }}
+          onApply={applyEditedImage}
+        />
       )}
     </div>
   )

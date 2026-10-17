@@ -94,8 +94,11 @@ export async function saveSettings(next: AppSettings) {
     terms_ar: next.terms_ar,
     updated_at: new Date().toISOString(),
   }
-  const { error } = await supabase.from("app_settings").upsert(payload)
+  // app_settings is a singleton row. Its RLS policy intentionally allows only
+  // UPDATE for master users, so upsert incorrectly asks for INSERT privileges.
+  const { data, error } = await supabase.from("app_settings").update(payload).eq("id", 1).select("id").maybeSingle()
   if (error) throw error
+  if (!data) throw new Error("SETTINGS_PERMISSION_DENIED")
   publish(normalize(payload))
 }
 

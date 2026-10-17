@@ -8,6 +8,7 @@ export type Profile = {
   id: string
   role: "master" | "branch_manager" | "staff"
   full_name: string
+  session_duration_minutes: number
   can_view_purchase_price: boolean
   can_edit_purchase_price: boolean
   can_view_wholesale_price: boolean

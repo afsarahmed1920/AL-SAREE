@@ -20,6 +20,9 @@ export default function Dashboard({ branchCode, branchName, user, onScan }: { br
   const [recent, setRecent] = useState<{ row: AuditRow; code?: string }[]>([])
   const [loadedBranch, setLoadedBranch] = useState("")
   const [recentLoading, setRecentLoading] = useState(true)
+  const [catalogIssue, setCatalogIssue] = useState(false)
+  const [activityIssue, setActivityIssue] = useState(false)
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -32,26 +35,26 @@ export default function Dashboard({ branchCode, branchName, user, onScan }: { br
           setLoadedBranch(branchCode)
         }
         const fresh = await syncBranchCatalog(branchCode)
-        if (alive) setProducts(fresh.products)
+        if (alive) { setProducts(fresh.products); setCatalogIssue(false) }
       } catch {
-        /* offline: keep cached data */
+        if (alive) setCatalogIssue(true)
       } finally {
         if (alive) setLoadedBranch(branchCode)
       }
     })()
     return () => { alive = false }
-  }, [branchCode])
+  }, [branchCode, retry])
 
   useEffect(() => {
     let alive = true
     listAudit(6)
       .then(({ rows, products: found }) => {
-        if (alive) setRecent(rows.map((row) => ({ row, code: row.entity_id ? found.get(row.entity_id)?.code : undefined })))
+        if (alive) { setRecent(rows.map((row) => ({ row, code: row.entity_id ? found.get(row.entity_id)?.code : undefined }))); setActivityIssue(false) }
       })
-      .catch(() => undefined)
+      .catch(() => { if (alive) setActivityIssue(true) })
       .finally(() => { if (alive) setRecentLoading(false) })
     return () => { alive = false }
-  }, [])
+  }, [retry])
 
   const d = useMemo(() => {
     const cats = new Map<string, { en: string; ar: string; n: number }>()
@@ -99,6 +102,17 @@ export default function Dashboard({ branchCode, branchName, user, onScan }: { br
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {(catalogIssue || activityIssue) && (
+        <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <Icon name="alert" className="mt-0.5 size-5 shrink-0" />
+            <p>{catalogIssue ? t("dashboardLoadOffline") : t("dashboardAuditUnavailable")}</p>
+          </div>
+          <button type="button" onClick={() => { setCatalogIssue(false); setActivityIssue(false); setRetry((value) => value + 1) }} className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-amber-700/20 px-3 font-semibold hover:bg-amber-500/10">
+            {t("retry")}
+          </button>
+        </div>
+      )}
       <section className="stagger relative overflow-hidden rounded-[2rem] bg-[#0b1224] p-6 text-white shadow-2xl shadow-[#1e3a8a]/20 sm:p-8" style={{ "--i": 0 } as React.CSSProperties}>
         <div aria-hidden className="hero-orb absolute -right-16 -top-24 size-72 rounded-full bg-[#ff8a00]/35 blur-3xl" />
         <div aria-hidden className="hero-orb absolute -bottom-28 left-10 size-72 rounded-full bg-[#3b82f6]/40 blur-3xl" style={{ animationDelay: "-6s" }} />

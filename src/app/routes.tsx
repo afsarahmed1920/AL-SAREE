@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
 import LockScreen from "../components/LockScreen"
 import { lockMinutes } from "../components/SecurityCard"
 import { clearUserQueue, listQueue, startQueueSync } from "../lib/offline-queue"
@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth-context"
 import Shell, { type Page } from "../components/Shell"
 import Skeleton from "../components/Skeleton"
 import { useApp } from "../lib/app-context"
+import GlobalScannerDialog from "../components/GlobalScannerDialog"
 
 const Dashboard = lazy(() => import("../components/Dashboard"))
 const Products = lazy(() => import("../components/Products"))
@@ -34,6 +35,16 @@ const pages: Page[] = [
 
 type BranchOption = { code: string; name_en: string; name_ar: string }
 const fallbackList: BranchOption[] = fallbackBranches.map((b) => ({ code: b.id, name_en: b.en, name_ar: b.ar }))
+const DEFAULT_SESSION_MINUTES = 1440
+
+function tokenSessionId(token: string) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { session_id?: string }
+    return payload.session_id ?? ""
+  } catch {
+    return ""
+  }
+}
 
 function ProtectedRoutes() {
   const { session, loading } = useAuth()
@@ -62,14 +73,85 @@ function Workspace() {
   const routePage = params.page as Page | undefined
   const page = routePage && pages.includes(routePage) ? routePage : "dashboard"
   const user = session?.user.email?.split("@")[0] ?? ""
+  const userId = session?.user.id
   const [branchId, setBranchId] = useState(fallbackBranches[0].id)
   const [branchList, setBranchList] = useState<BranchOption[]>(fallbackList)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannedBarcode, setScannedBarcode] = useState("")
+  const openScanner = useCallback(() => setScannerOpen(true), [])
+  const closeScanner = useCallback(() => setScannerOpen(false), [])
+  const receiveBarcode = useCallback((barcode: string) => {
+    setScannedBarcode(barcode)
+    navigate("/scan")
+  }, [navigate])
 
   const [locked, setLocked] = useState(() => sessionStorage.getItem("locked") === "1")
   useEffect(() => {
     if (!session) return
     startQueueSync()
   }, [session])
+
+  useEffect(() => {
+    if (!session || !userId) return
+    const key = `al-saree-session-start:${userId}`
+    const sessionId = tokenSessionId(session.access_token)
+    let startedAt = Date.now()
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? "null") as { sessionId?: string; startedAt?: number } | null
+      if (saved?.startedAt && saved.sessionId === sessionId) startedAt = saved.startedAt
+      else localStorage.setItem(key, JSON.stringify({ sessionId, startedAt }))
+    } catch {
+      localStorage.setItem(key, JSON.stringify({ sessionId, startedAt }))
+    }
+
+    let timer = 0
+    const durationKey = `al-saree-session-limit:${userId}`
+    const cachedDuration = Number(localStorage.getItem(durationKey))
+    let duration = Number.isInteger(cachedDuration) && cachedDuration >= 5 && cachedDuration <= DEFAULT_SESSION_MINUTES
+      ? cachedDuration
+      : DEFAULT_SESSION_MINUTES
+    let expired = false
+    const enforce = () => {
+      if (expired) return
+      const remaining = startedAt + duration * 60_000 - Date.now()
+      if (remaining <= 0) {
+        expired = true
+        localStorage.setItem("al-saree-session-expired", "1")
+        localStorage.removeItem(key)
+        sessionStorage.removeItem("locked")
+        void supabase.auth.signOut()
+        return
+      }
+      window.clearTimeout(timer)
+      timer = window.setTimeout(enforce, remaining)
+    }
+    const refreshDuration = async () => {
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("session_duration_minutes")
+        .eq("id", userId)
+        .maybeSingle()
+      const value = Number(data?.session_duration_minutes)
+      if (Number.isInteger(value) && value >= 5 && value <= DEFAULT_SESSION_MINUTES) {
+        duration = value
+        localStorage.setItem(durationKey, String(value))
+      }
+      enforce()
+    }
+    const update = () => { void refreshDuration() }
+    const onVisibility = () => { if (!document.hidden) update() }
+    window.addEventListener("session-limit-change", update)
+    window.addEventListener("focus", update)
+    document.addEventListener("visibilitychange", onVisibility)
+    void refreshDuration()
+    return () => {
+      expired = true
+      window.clearTimeout(timer)
+      window.removeEventListener("session-limit-change", update)
+      window.removeEventListener("focus", update)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [session?.access_token, userId])
 
   useEffect(() => {
     if (!user) return
@@ -144,12 +226,14 @@ function Workspace() {
     }
     stockKeys.forEach((key) => localStorage.removeItem(key))
     localStorage.removeItem("passkey-registered")
+    if (userId) localStorage.removeItem(`al-saree-session-start:${userId}`)
     void supabase.auth.signOut()
   }
 
   const current = branchList.find((b) => b.code === branchId) ?? branchList[0]
 
   return (
+    <>
     <Shell
       page={page}
       setPage={setPage}
@@ -157,6 +241,7 @@ function Workspace() {
       setBranchId={setBranchId}
       branchList={branchList}
       onLogout={logout}
+      onScan={openScanner}
     >
       <Suspense fallback={<Skeleton />}>
         {page === "dashboard" && (
@@ -164,10 +249,10 @@ function Workspace() {
             branchCode={branchId}
             branchName={{ en: current.name_en, ar: current.name_ar }}
             user={user}
-            onScan={() => setPage("scan")}
+            onScan={openScanner}
           />
         )}
-        {page === "scan" && <Scanner branchCode={branchId} />}
+        {page === "scan" && <Scanner branchCode={branchId} scanCode={scannedBarcode} onScanCodeHandled={() => setScannedBarcode("")} />}
         {page === "products" && <Products branchCode={branchId} />}
         {page === "count" && <StockCount branchCode={branchId} />}
         {page === "users" && <Users />}
@@ -183,6 +268,8 @@ function Workspace() {
         />
       )}
     </Shell>
+    <GlobalScannerDialog open={scannerOpen} onClose={closeScanner} onScan={receiveBarcode} />
+    </>
   )
 }
 

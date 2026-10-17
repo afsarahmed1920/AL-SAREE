@@ -38,13 +38,14 @@ function SyncBadge() {
   )
 }
 
-export default function Shell({ page, setPage, branchId, setBranchId, branchList, onLogout, children }: {
+export default function Shell({ page, setPage, branchId, setBranchId, branchList, onLogout, onScan, children }: {
   branchList: { code: string; name_en: string; name_ar: string }[]
   page: Page
   setPage: (p: Page) => void
   branchId: string
   setBranchId: (b: string) => void
   onLogout: () => void
+  onScan: () => void
   children: ReactNode
 }) {
   const { t, lang } = useApp()
@@ -157,7 +158,7 @@ export default function Shell({ page, setPage, branchId, setBranchId, branchList
 
       <main key={`${page}-${refreshKey}`} className="dock-content page-enter safe-x relative min-w-0 p-4 lg:p-8">
         {isMore && (
-          <div className="mx-auto mb-4 flex max-w-md items-center gap-1 rounded-2xl border border-line/80 bg-surface/80 p-1 shadow-sm backdrop-blur-xl lg:hidden">
+          <div className="mx-auto mb-4 flex max-w-full snap-x items-center gap-1 overflow-x-auto rounded-2xl border border-line/80 bg-surface/80 p-1 shadow-sm backdrop-blur-xl overscroll-x-contain [scrollbar-width:none] lg:hidden">
             {([
               { id: "settings" as const, icon: "cog" as const, label: "settings" as const },
               { id: "users" as const, icon: "users" as const, label: "users" as const },
@@ -169,14 +170,14 @@ export default function Shell({ page, setPage, branchId, setBranchId, branchList
                 <button
                   key={m.id}
                   onClick={() => setPage(m.id)}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all duration-200 ${
+                  className={`flex min-w-fit shrink-0 snap-start items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-200 ${
                     active
                       ? "bg-brand text-white shadow-sm shadow-brand/25"
                       : "text-ink2 hover:text-ink"
                   }`}
                 >
                   <Icon name={m.icon} active={active} className="size-3.5" />
-                  <span className="truncate">{t(m.label)}</span>
+                  <span>{t(m.label)}</span>
                 </button>
               )
             })}
@@ -187,7 +188,7 @@ export default function Shell({ page, setPage, branchId, setBranchId, branchList
 
       <nav
         aria-label="Primary"
-        className="mobile-dock fixed inset-x-3 z-40 mx-auto grid h-20 max-w-md grid-cols-5 items-center rounded-full px-2 lg:hidden"
+        className="mobile-dock fixed inset-x-3 z-40 mx-auto grid h-20 max-w-md grid-cols-5 items-center rounded-full px-1.5 min-[380px]:px-2 lg:hidden"
       >
         {(["dashboard", "products", "scan", "history", "settings"] as const).map((id) => {
           if (id === "scan") {
@@ -195,13 +196,13 @@ export default function Shell({ page, setPage, branchId, setBranchId, branchList
             return (
               <div key={id} className="flex items-center justify-center">
                 <button
-                  onClick={() => setPage("scan")}
+                  onClick={onScan}
                   aria-label={t("scanBarcode")}
                   aria-current={scanActive ? "page" : undefined}
                   className="dock-tab dock-scan group relative flex h-16 w-full flex-col items-center justify-center gap-1 rounded-3xl text-ink"
                 >
                   <span className="dock-scan-tile grid size-11 place-items-center rounded-2xl bg-accent text-ink shadow-lg shadow-accent/25">
-                    <Icon name="scan" active={scanActive} className="size-7 text-ink dark:text-app" />
+                <Icon name="scan" active={scanActive} className="size-6 text-ink dark:text-app min-[380px]:size-7" />
                   </span>
                   <span className="text-xs font-semibold leading-none">{lang === "en" ? "Scan" : "مسح"}</span>
                 </button>
@@ -222,9 +223,9 @@ export default function Shell({ page, setPage, branchId, setBranchId, branchList
                 <span aria-hidden="true" className="dock-selection absolute inset-0.5 rounded-3xl bg-brand/10 ring-1 ring-brand/10" />
               )}
               <span className="dock-tab-icon relative flex items-center justify-center">
-                <Icon name={icon} active={active} className="size-7" />
+              <Icon name={icon} active={active} className="size-6 min-[380px]:size-7" />
               </span>
-              <span className={`relative max-w-full truncate px-0.5 text-xs leading-none ${active ? "font-semibold" : "font-medium"}`}>
+              <span className={`relative max-w-full truncate px-0.5 text-[10px] leading-none min-[380px]:text-xs ${active ? "font-semibold" : "font-medium"}`}>
                 {label}
               </span>
             </button>

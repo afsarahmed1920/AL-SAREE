@@ -45,6 +45,94 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="grid gap-1.5 text-sm font-medium text-ink2">{label}{children}</label>
 }
 
+type SessionLimitUser = { id: string; username: string; full_name: string; session_duration_minutes: number }
+
+function SessionLimitsCard() {
+  const { t } = useApp()
+  const [users, setUsers] = useState<SessionLimitUser[]>([])
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+
+  const load = async () => {
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("id,username,full_name,session_duration_minutes")
+      .order("username")
+    if (error) throw error
+    const rows = (data ?? []) as SessionLimitUser[]
+    setUsers(rows)
+    setDrafts(Object.fromEntries(rows.map((user) => [user.id, String(user.session_duration_minutes ?? 1440)])))
+  }
+
+  useEffect(() => {
+    void load().catch(() => setMessage({ text: t("couldNotLoadUsers"), error: true }))
+  }, [t])
+
+  const save = async (user: SessionLimitUser) => {
+    const minutes = Number(drafts[user.id])
+    if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+      setMessage({ text: t("sessionLimitRange"), error: true })
+      return
+    }
+    setBusy(user.id)
+    setMessage(null)
+    try {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .update({ session_duration_minutes: minutes })
+        .eq("id", user.id)
+        .select("id")
+        .maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error("SESSION_LIMIT_DENIED")
+      setUsers((current) => current.map((row) => row.id === user.id ? { ...row, session_duration_minutes: minutes } : row))
+      window.dispatchEvent(new Event("session-limit-change"))
+      setMessage({ text: t("sessionLimitSaved"), error: false })
+    } catch {
+      setMessage({ text: t("couldNotSaveSessionLimit"), error: true })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className={card}>
+      <h2 className="font-display text-lg font-semibold text-ink">{t("sessionLimits")}</h2>
+      <p className="mt-1 text-sm text-ink2">{t("sessionLimitsSub")}</p>
+      <p className="mt-2 text-xs text-ink2">{t("sessionLocalOnly")}</p>
+      <div className="mt-4 divide-y divide-line rounded-xl border border-line">
+        {users.map((user) => (
+          <div key={user.id} className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink">{user.full_name || user.username}</p>
+              <p className="truncate text-xs text-ink2" dir="ltr">@{user.username}</p>
+            </div>
+            <label className="grid gap-1 text-xs font-medium text-ink2">
+              {t("sessionMinutes")}
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                step={1}
+                inputMode="numeric"
+                value={drafts[user.id] ?? "1440"}
+                onChange={(event) => setDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+                className={input}
+              />
+            </label>
+            <button type="button" disabled={busy !== null} onClick={() => void save(user)} className={btn}>
+              {busy === user.id ? t("saving") : t("saveSessionLimit")}
+            </button>
+          </div>
+        ))}
+        {!users.length && <p className="p-4 text-sm text-ink2">{t("syncing")}</p>}
+      </div>
+      {message && <p role={message.error ? "alert" : "status"} className={`mt-3 text-sm ${message.error ? "text-red-600" : "text-emerald-600"}`}>{message.text}</p>}
+    </section>
+  )
+}
+
 export default function Settings() {
   const { t } = useApp()
   const stored = useSettings()
@@ -85,8 +173,10 @@ export default function Settings() {
     try {
       await fn()
     } catch (e) {
-      const text = e instanceof Error ? e.message : (e as { message?: string })?.message ?? ""
-      setMsg({ ok: false, text: `${t("settingsSaveFailed")} ${text}` })
+      const error = e as { message?: string; code?: string }
+      const internal = `${error?.message ?? ""} ${error?.code ?? ""}`
+      const isAccess = error?.code === "42501" || error?.message === "SETTINGS_PERMISSION_DENIED" || /row-level security|permission denied/i.test(internal)
+      setMsg({ ok: false, text: isAccess ? t("masterOnly") : t("settingsSaveFailed") })
     } finally {
       setBusy(false)
     }
@@ -138,6 +228,8 @@ export default function Settings() {
       </div>
 
       <SecurityCard />
+
+      {profile?.role === "master" && <SessionLimitsCard />}
 
       {msg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${msg.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-red-500/30 bg-red-500/10 text-red-500"}`}>
