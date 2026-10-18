@@ -339,7 +339,7 @@ async function registrationOptions(request: Request) {
     .eq("user_id", profile.id)
   if (error) throw new HttpError(503, "Could not load registered passkeys")
   const options = await generateRegistrationOptions({
-    rpName: "AL-SAREE",
+    rpName: "Al-Saree",
     rpID: config.rpId,
     userID: new TextEncoder().encode(profile.id),
     userName: profile.username,
@@ -350,6 +350,7 @@ async function registrationOptions(request: Request) {
       transports: row.transports ?? [],
     })),
     authenticatorSelection: {
+      authenticatorAttachment: "platform",
       residentKey: "required",
       userVerification: "required",
     },
