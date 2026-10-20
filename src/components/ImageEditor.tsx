@@ -22,6 +22,7 @@ export default function ImageEditor({ file, onCancel, onApply }: {
   const [contrast, setContrast] = useState(100)
   const [zoom, setZoom] = useState(100)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [mode, setMode] = useState<"crop" | "adjust">("crop")
 
   useEffect(() => {
     let active = true
@@ -99,26 +100,53 @@ export default function ImageEditor({ file, onCancel, onApply }: {
           <h2 className="font-display text-lg font-semibold text-ink">{t("imageEditorTitle")}</h2>
           <button type="button" disabled={busy} onClick={onCancel} aria-label={t("cancel")} className="grid size-10 place-items-center rounded-full text-ink2 hover:bg-surface2"><Icon name="x" /></button>
         </header>
-        <canvas
-          ref={canvasRef}
-          width={PREVIEW_SIZE}
-          height={PREVIEW_SIZE}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={() => { dragRef.current = null }}
-          onPointerCancel={() => { dragRef.current = null }}
-          className="mx-auto aspect-square w-full max-w-sm touch-none rounded-xl bg-black object-contain"
-        />
-        <p className="mt-2 text-center text-xs text-ink2">{t("cropHint")}</p>
-        <div className="mt-3 flex justify-center gap-2">
-          <button type="button" onClick={() => setRotation((value) => value - 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="left" className="size-4" />{t("rotateLeft")}</button>
-          <button type="button" onClick={() => setRotation((value) => value + 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="right" className="size-4" />{t("rotateRight")}</button>
+        <div className="relative mx-auto aspect-square w-full max-w-sm overflow-hidden rounded-xl bg-black">
+          <canvas
+            ref={canvasRef}
+            width={PREVIEW_SIZE}
+            height={PREVIEW_SIZE}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={() => { dragRef.current = null }}
+            onPointerCancel={() => { dragRef.current = null }}
+            className="absolute inset-0 size-full touch-none object-contain"
+          />
+          {mode === "crop" && (
+            <div className="pointer-events-none absolute inset-0 border-2 border-white/80 shadow-[inset_0_0_0_999px_rgba(0,0,0,0.08)]" aria-hidden="true">
+              <span className="absolute inset-y-0 left-1/3 border-s border-white/40" />
+              <span className="absolute inset-y-0 left-2/3 border-s border-white/40" />
+              <span className="absolute inset-x-0 top-1/3 border-t border-white/40" />
+              <span className="absolute inset-x-0 top-2/3 border-t border-white/40" />
+            </div>
+          )}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <Range label={t("zoom")} value={zoom} min={100} max={300} onChange={setZoom} />
-          <Range label={t("brightness")} value={brightness} min={60} max={140} onChange={setBrightness} />
-          <Range label={t("contrast")} value={contrast} min={60} max={160} onChange={setContrast} />
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-surface2 p-1">
+          <button type="button" aria-pressed={mode === "crop"} onClick={() => setMode("crop")}
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${mode === "crop" ? "bg-surface text-ink shadow-sm" : "text-ink2"}`}>
+            <Icon name="scan" className="size-4" /> {t("squareCrop")}
+          </button>
+          <button type="button" aria-pressed={mode === "adjust"} onClick={() => setMode("adjust")}
+            className={`inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold ${mode === "adjust" ? "bg-surface text-ink shadow-sm" : "text-ink2"}`}>
+            {t("adjustImage")}
+          </button>
         </div>
+        {mode === "crop" ? (
+          <>
+            <p className="mt-2 text-center text-xs text-ink2">{t("cropFrameHint")}</p>
+            <div className="mt-3 flex justify-center gap-2">
+              <button type="button" onClick={() => setRotation((value) => value - 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="left" className="size-4" />{t("rotateLeft")}</button>
+              <button type="button" onClick={() => setRotation((value) => value + 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="right" className="size-4" />{t("rotateRight")}</button>
+            </div>
+            <div className="mt-3">
+              <Range label={t("zoom")} value={zoom} min={100} max={300} onChange={setZoom} />
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            <Range label={t("brightness")} value={brightness} min={60} max={140} onChange={setBrightness} />
+            <Range label={t("contrast")} value={contrast} min={60} max={160} onChange={setContrast} />
+          </div>
+        )}
         {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" disabled={busy} onClick={onCancel} className="h-11 rounded-xl border border-line2 px-4 text-sm font-semibold text-ink">{t("cancel")}</button>

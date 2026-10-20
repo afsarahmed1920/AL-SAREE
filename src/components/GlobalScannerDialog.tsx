@@ -2,10 +2,11 @@ import { useEffect, useState } from "react"
 import { useApp } from "../lib/app-context"
 import Icon from "./Icon"
 
-export default function GlobalScannerDialog({ open, onClose, onScan }: {
+export default function GlobalScannerDialog({ open, onClose, onScan, readerId = "global-barcode-reader" }: {
   open: boolean
   onClose: () => void
   onScan: (barcode: string) => void
+  readerId?: string
 }) {
   const { t } = useApp()
   const [error, setError] = useState("")
@@ -21,7 +22,7 @@ export default function GlobalScannerDialog({ open, onClose, onScan }: {
     void import("html5-qrcode")
       .then(({ Html5Qrcode }) => {
         if (disposed) return
-        scanner = new Html5Qrcode("global-barcode-reader")
+        scanner = new Html5Qrcode(readerId)
         startPromise = scanner.start(
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 260, height: 140 } },
@@ -32,7 +33,15 @@ export default function GlobalScannerDialog({ open, onClose, onScan }: {
             onClose()
           },
           () => undefined,
-        )
+        ).catch((cause: unknown) => {
+          if (disposed) return
+          const message = String((cause as Error)?.message ?? cause ?? "").toLowerCase()
+          setError(!window.isSecureContext
+            ? t("cameraHttpsHelp")
+            : /permission|denied|notallowed/.test(message)
+              ? t("cameraPermissionHelp")
+              : t("cameraError"))
+        })
       })
       .catch((cause: unknown) => {
         if (disposed) return
@@ -54,7 +63,7 @@ export default function GlobalScannerDialog({ open, onClose, onScan }: {
           .finally(() => scanner?.clear())
       } else scanner?.clear()
     }
-  }, [open, onClose, onScan, t, attempt])
+  }, [open, onClose, onScan, readerId, t, attempt])
 
   if (!open) return null
   return (
@@ -64,7 +73,7 @@ export default function GlobalScannerDialog({ open, onClose, onScan }: {
           <div className="flex min-w-0 items-center gap-2 font-semibold text-ink"><Icon name="camera" className="size-5 text-brand" />{t("scanBarcode")}</div>
           <button type="button" onClick={onClose} aria-label={t("closeCamera")} className="grid size-10 shrink-0 place-items-center rounded-full text-ink2 hover:bg-surface2"><Icon name="x" className="size-5" /></button>
         </header>
-        <div id="global-barcode-reader" className="mx-auto min-h-48 max-w-xl overflow-hidden bg-black" />
+        <div id={readerId} className="mx-auto min-h-48 max-w-xl overflow-hidden bg-black" />
         {error ? (
           <div className="space-y-3 p-4">
             <p role="alert" className="rounded-xl border border-amber-400/40 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">{error}</p>

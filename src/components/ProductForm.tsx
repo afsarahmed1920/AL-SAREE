@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useApp } from "../lib/app-context"
 import { generateEan13 } from "../lib/code128"
 import {
@@ -13,6 +13,7 @@ import {
 } from "../lib/products"
 import ImageManager from "./ImageManager"
 import Icon from "./Icon"
+import GlobalScannerDialog from "./GlobalScannerDialog"
 
 const input =
   "h-11 w-full rounded-xl border border-line2 bg-app px-3.5 text-ink outline-none focus:border-focus focus:ring-2 focus:ring-focus/20 disabled:opacity-60"
@@ -90,7 +91,12 @@ export default function ProductForm({ initial, original, profile, branches, cate
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [newCategory, setNewCategory] = useState(false)
+  const [barcodeCameraOpen, setBarcodeCameraOpen] = useState(false)
+  const [barcodeNotice, setBarcodeNotice] = useState("")
+  const barcodesRef = useRef(draft.barcodes)
+  barcodesRef.current = draft.barcodes
   const editProducts = can.editProducts(profile)
+  const closeBarcodeCamera = useCallback(() => setBarcodeCameraOpen(false), [])
 
   const patch = (changes: Partial<ProductDraft>) => setDraft((d) => ({ ...d, ...changes }))
   const patchBranch = (id: string, changes: Partial<BranchDraft>) =>
@@ -166,6 +172,23 @@ export default function ProductForm({ initial, original, profile, branches, cate
 
   const setBarcode = (index: number, value: string) =>
     patch({ barcodes: draft.barcodes.map((b, i) => (i === index ? value : b)) })
+
+  const receiveBarcode = useCallback((value: string) => {
+    const barcode = value.trim()
+    if (!barcode) return
+    if (barcodesRef.current.some((existing) => existing.trim() === barcode)) {
+      setBarcodeNotice(t("barcodeAlreadyInProduct"))
+      return
+    }
+    setBarcodeNotice("")
+    setDraft((current) => {
+      const emptyIndex = current.barcodes.findIndex((existing) => !existing.trim())
+      const barcodes = [...current.barcodes]
+      if (emptyIndex >= 0) barcodes[emptyIndex] = barcode
+      else barcodes.push(barcode)
+      return { ...current, barcodes }
+    })
+  }, [t])
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-4xl space-y-5">
@@ -267,7 +290,11 @@ export default function ProductForm({ initial, original, profile, branches, cate
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-lg font-semibold text-ink">{t("barcodes")}</h2>
           {editProducts && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => { setBarcodeNotice(""); setBarcodeCameraOpen(true) }}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line2 px-3 text-sm font-medium text-ink">
+                <Icon name="camera" className="size-4" /> {t("scanIntoProduct")}
+              </button>
               <button type="button" onClick={() => patch({ barcodes: [...draft.barcodes, generateEan13()] })}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-brand-deep">
                 <Icon name="sparkle" className="size-4" /> {t("generateBarcode")}
@@ -295,7 +322,15 @@ export default function ProductForm({ initial, original, profile, branches, cate
             </div>
           ))}
         </div>
+        {barcodeNotice && <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{barcodeNotice}</p>}
       </section>
+
+      <GlobalScannerDialog
+        open={barcodeCameraOpen}
+        onClose={closeBarcodeCamera}
+        onScan={receiveBarcode}
+        readerId="product-barcode-reader"
+      />
 
       <section className={card}>
         <h2 className="mb-4 font-display text-lg font-semibold text-ink">{t("images")}</h2>
