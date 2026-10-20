@@ -15,6 +15,7 @@ import {
 import Icon from "./Icon"
 import ProductForm from "./ProductForm"
 import StickerModal, { type StickerProduct } from "./StickerModal"
+import ProductDetailModal from "./ProductDetailModal"
 import Skeleton from "./Skeleton"
 import { listQueue, onQueueChange } from "../lib/offline-queue"
 import { supabase } from "../lib/supabase"
@@ -35,9 +36,11 @@ export default function Products({ branchCode }: { branchCode: string }) {
   const [limit, setLimit] = useState(PAGE)
   const [form, setForm] = useState<{ draft: ProductDraft; original: ProductDraft | null } | null>(null)
   const [sticker, setSticker] = useState<StickerProduct | null>(null)
+  const [detailProduct, setDetailProduct] = useState<CatalogProduct | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const online = navigator.onLine
+  const closeDetail = useCallback(() => setDetailProduct(null), [])
   const [pending, setPending] = useState(0)
   const [sheet, setSheet] = useState(false)
 
@@ -278,21 +281,23 @@ export default function Products({ branchCode }: { branchCode: string }) {
               {filtered.slice(0, limit).map((p) => {
                 const image = p.images.find((i) => i.is_primary) ?? p.images[0]
                 return (
-                  <li key={p.product_id} className="flex items-center gap-3 p-3 sm:gap-4 sm:p-4">
-                    <div className="size-14 shrink-0 overflow-hidden rounded-xl bg-surface2 sm:size-16">
-                      {image ? (
-                        <img src={image.url} alt="" loading="lazy" className="size-full object-cover" />
-                      ) : (
-                        <div className="grid size-full place-items-center text-ink2"><Icon name="image" className="size-6" /></div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-ink">{name(p)}</p>
-                      <p className="mt-0.5 truncate text-xs text-ink2">
-                        <span dir="ltr">{p.product_code}</span> · {catName(p)}
-                        {!p.barcodes.length && <span className="ms-2 font-medium text-accent">{t("noBarcode")}</span>}
-                      </p>
-                    </div>
+                  <li key={p.product_id} className="flex items-center gap-2 p-2 sm:gap-4 sm:p-4">
+                    <button type="button" onClick={() => setDetailProduct(p)} aria-label={`${t("productDetails")}: ${name(p)}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-start hover:bg-app focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:gap-4">
+                      <div className="size-14 shrink-0 overflow-hidden rounded-xl bg-surface2 sm:size-16">
+                        {image ? (
+                          <img src={image.url} alt="" loading="lazy" className="size-full object-cover" />
+                        ) : (
+                          <div className="grid size-full place-items-center text-ink2"><Icon name="image" className="size-6" /></div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-ink">{name(p)}</p>
+                        <p className="mt-0.5 truncate text-xs text-ink2">
+                          <span dir="ltr">{p.product_code}</span> · {catName(p)}
+                          {!p.barcodes.length && <span className="ms-2 font-medium text-accent">{t("noBarcode")}</span>}
+                        </p>
+                      </div>
+                    </button>
                     <div className="hidden text-end sm:block">
                       {p.retail_price !== undefined && <p className="font-semibold text-ink">{sar(p.retail_price)}</p>}
                       {p.track_stock && (
@@ -356,6 +361,16 @@ export default function Products({ branchCode }: { branchCode: string }) {
         </div>
       )}
       {sticker && <StickerModal product={sticker} onClose={() => setSticker(null)} />}
+      {detailProduct && ctx && (
+        <ProductDetailModal
+          product={detailProduct}
+          branches={ctx.branches}
+          profile={ctx.profile}
+          onClose={closeDetail}
+          onEdit={() => { const id = detailProduct.product_id; setDetailProduct(null); void open(id) }}
+          onSticker={(product) => { setDetailProduct(null); setSticker(product) }}
+        />
+      )}
     </>
   )
 }

@@ -183,16 +183,24 @@ function Workspace() {
 
   useEffect(() => {
     if (!user) return
-    void supabase
-      .from("branches")
-      .select("code,name_en,name_ar")
-      .eq("is_active", true)
-      .order("code")
-      .then(({ data }) => {
-        if (!data?.length) return
-        setBranchList(data as BranchOption[])
-        setBranchId((current) => (data.some((b) => b.code === current) ? current : data[0].code))
-      })
+    let active = true
+    const loadBranches = async () => {
+      const { data } = await supabase
+        .from("branches")
+        .select("code,name_en,name_ar")
+        .eq("is_active", true)
+        .order("code")
+      if (!active || !data?.length) return
+      setBranchList(data as BranchOption[])
+      setBranchId((current) => (data.some((b) => b.code === current) ? current : data[0].code))
+    }
+    const refresh = () => { void loadBranches() }
+    refresh()
+    window.addEventListener("branches-updated", refresh)
+    return () => {
+      active = false
+      window.removeEventListener("branches-updated", refresh)
+    }
   }, [user])
 
   const setPage = (nextPage: Page) =>

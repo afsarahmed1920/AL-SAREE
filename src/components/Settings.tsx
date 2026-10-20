@@ -47,6 +47,96 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 type SessionLimitUser = { id: string; username: string; full_name: string; session_duration_minutes: number }
 
+function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onChange: (branches: BranchRow[]) => void }) {
+  const { t } = useApp()
+  const [drafts, setDrafts] = useState<Record<string, Pick<BranchRow, "code" | "name_en" | "name_ar">>>({})
+  const [adding, setAdding] = useState(false)
+  const [newBranch, setNewBranch] = useState({ code: "", name_en: "", name_ar: "" })
+  const [busy, setBusy] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(branches.map((branch) => [branch.id, { code: branch.code, name_en: branch.name_en, name_ar: branch.name_ar }])))
+  }, [branches])
+
+  const saveBranch = async (branch: BranchRow) => {
+    const draft = drafts[branch.id]
+    const values = { code: draft?.code.trim().toUpperCase(), name_en: draft?.name_en.trim(), name_ar: draft?.name_ar.trim() }
+    if (!values.code || !values.name_en || !values.name_ar) {
+      setMessage({ text: t("branchSaveFailed"), error: true })
+      return
+    }
+    setBusy(branch.id)
+    setMessage(null)
+    const { data, error } = await supabase.from("branches").update(values).eq("id", branch.id).select("id,code,name_en,name_ar").maybeSingle()
+    if (error || !data) {
+      setMessage({ text: error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"), error: true })
+      setBusy(null)
+      return
+    }
+    const updated = branches.map((item) => item.id === branch.id ? data as BranchRow : item).sort((a, b) => a.code.localeCompare(b.code))
+    onChange(updated)
+    window.dispatchEvent(new Event("branches-updated"))
+    setMessage({ text: t("branchSaved"), error: false })
+    setBusy(null)
+  }
+
+  const createBranch = async () => {
+    const values = { code: newBranch.code.trim().toUpperCase(), name_en: newBranch.name_en.trim(), name_ar: newBranch.name_ar.trim() }
+    if (!values.code || !values.name_en || !values.name_ar) {
+      setMessage({ text: t("branchSaveFailed"), error: true })
+      return
+    }
+    setBusy("new")
+    setMessage(null)
+    const { data, error } = await supabase.from("branches").insert(values).select("id,code,name_en,name_ar").single()
+    if (error || !data) {
+      setMessage({ text: error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"), error: true })
+      setBusy(null)
+      return
+    }
+    onChange([...branches, data as BranchRow].sort((a, b) => a.code.localeCompare(b.code)))
+    window.dispatchEvent(new Event("branches-updated"))
+    setNewBranch({ code: "", name_en: "", name_ar: "" })
+    setAdding(false)
+    setMessage({ text: t("branchAdded"), error: false })
+    setBusy(null)
+  }
+
+  return (
+    <section className={card}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="font-display text-lg font-semibold text-ink">{t("branchManagement")}</h2><p className="mt-1 text-sm text-ink2">{t("branchManagementSub")}</p></div>
+        <button type="button" onClick={() => { setMessage(null); setAdding(true) }} className={btn}><Icon name="plus" className="size-4" />{t("addBranch")}</button>
+      </div>
+      <div className="mt-4 space-y-3">
+        {branches.map((branch) => {
+          const draft = drafts[branch.id] ?? branch
+          return <div key={branch.id} className="grid gap-3 rounded-xl border border-line p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem_auto] sm:items-end">
+            <Field label={t("branchNameEn")}><input className={input} value={draft.name_en} onChange={(event) => setDrafts((current) => ({ ...current, [branch.id]: { ...draft, name_en: event.target.value } }))} /></Field>
+            <Field label={t("branchNameAr")}><input className={input} dir="rtl" value={draft.name_ar} onChange={(event) => setDrafts((current) => ({ ...current, [branch.id]: { ...draft, name_ar: event.target.value } }))} /></Field>
+            <Field label={t("branchCode")}><input className={input} dir="ltr" value={draft.code} onChange={(event) => setDrafts((current) => ({ ...current, [branch.id]: { ...draft, code: event.target.value } }))} /></Field>
+            <button type="button" disabled={busy !== null} onClick={() => void saveBranch(branch)} className={btn}>{busy === branch.id ? t("saving") : t("save")}</button>
+          </div>
+        })}
+        {!branches.length && <p className="rounded-xl bg-app p-4 text-sm text-ink2">{t("noBranchAccess")}</p>}
+      </div>
+      {message && <p role={message.error ? "alert" : "status"} className={`mt-3 text-sm ${message.error ? "text-red-600" : "text-emerald-600"}`}>{message.text}</p>}
+      {adding && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={t("addBranch")}>
+        <button type="button" aria-label={t("close")} onClick={() => setAdding(false)} className="absolute inset-0" />
+        <div className="relative z-10 w-full max-w-lg space-y-4 rounded-t-3xl border border-line bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-2xl sm:p-6">
+          <h3 className="font-display text-lg font-semibold text-ink">{t("addBranch")}</h3>
+          <Field label={t("branchNameEn")}><input autoFocus className={input} value={newBranch.name_en} onChange={(event) => setNewBranch((current) => ({ ...current, name_en: event.target.value }))} /></Field>
+          <Field label={t("branchNameAr")}><input dir="rtl" className={input} value={newBranch.name_ar} onChange={(event) => setNewBranch((current) => ({ ...current, name_ar: event.target.value }))} /></Field>
+          <Field label={t("branchCode")}><input dir="ltr" className={input} value={newBranch.code} onChange={(event) => setNewBranch((current) => ({ ...current, code: event.target.value }))} /></Field>
+          {message?.error && <p role="alert" className="text-sm text-red-600">{message.text}</p>}
+          <div className="flex justify-end gap-2"><button type="button" disabled={busy !== null} onClick={() => setAdding(false)} className={btn}>{t("cancel")}</button><button type="button" disabled={busy !== null} onClick={() => void createBranch()} className="h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-on-brand">{busy === "new" ? t("saving") : t("save")}</button></div>
+        </div>
+      </div>}
+    </section>
+  )
+}
+
 function SessionLimitsCard() {
   const { t } = useApp()
   const [users, setUsers] = useState<SessionLimitUser[]>([])
@@ -230,6 +320,7 @@ export default function Settings() {
       <SecurityCard />
 
       {profile?.role === "master" && <SessionLimitsCard />}
+      {profile?.role === "master" && <BranchManagement branches={branches} onChange={setBranches} />}
 
       {msg && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${msg.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600" : "border-red-500/30 bg-red-500/10 text-red-500"}`}>

@@ -171,7 +171,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
   }
 
   const setBarcode = (index: number, value: string) =>
-    patch({ barcodes: draft.barcodes.map((b, i) => (i === index ? value : b)) })
+    patch({ barcodes: draft.barcodes.length === 0 && index === 0 ? [value] : draft.barcodes.map((b, i) => (i === index ? value : b)) })
 
   const receiveBarcode = useCallback((value: string) => {
     const barcode = value.trim()
@@ -291,10 +291,6 @@ export default function ProductForm({ initial, original, profile, branches, cate
           <h2 className="font-display text-lg font-semibold text-ink">{t("barcodes")}</h2>
           {editProducts && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setBarcodeNotice(""); setBarcodeCameraOpen(true) }}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line2 px-3 text-sm font-medium text-ink">
-                <Icon name="camera" className="size-4" /> {t("scanIntoProduct")}
-              </button>
               <button type="button" onClick={() => patch({ barcodes: [...draft.barcodes, generateEan13()] })}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-semibold text-brand-deep">
                 <Icon name="sparkle" className="size-4" /> {t("generateBarcode")}
@@ -307,17 +303,27 @@ export default function ProductForm({ initial, original, profile, branches, cate
           )}
         </div>
         <div className="space-y-2">
-          {draft.barcodes.length === 0 && <p className="text-sm text-ink2">{t("noBarcodeYet")}</p>}
-          {draft.barcodes.map((value, index) => (
+          {draft.barcodes.length === 0 && !editProducts ? (
+            <p className="text-sm text-ink2">{t("noBarcodeYet")}</p>
+          ) : (draft.barcodes.length ? draft.barcodes : [""]).map((value, index) => (
             <div key={index} className="flex gap-2">
               <input dir="ltr" value={value} disabled={!editProducts} placeholder={t("barcodePlaceholder")}
                 onChange={(e) => setBarcode(index, e.target.value)} className={`${input} font-mono`} />
               {editProducts && (
-                <button type="button" aria-label={t("remove")}
-                  onClick={() => patch({ barcodes: draft.barcodes.filter((_, i) => i !== index) })}
-                  className="grid size-11 shrink-0 place-items-center rounded-xl border border-line2 text-ink2 hover:text-red-600">
-                  <Icon name="trash" className="size-4" />
-                </button>
+                <>
+                  <button type="button" aria-label={t("scanIntoProduct")} title={t("scanIntoProduct")}
+                    onClick={() => { setBarcodeNotice(""); setBarcodeCameraOpen(true) }}
+                    className="grid size-11 min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-line2 bg-surface text-ink hover:bg-surface2">
+                    <Icon name="camera" className="size-5" />
+                  </button>
+                  {draft.barcodes.length > 0 && (
+                    <button type="button" aria-label={t("remove")}
+                      onClick={() => patch({ barcodes: draft.barcodes.filter((_, i) => i !== index) })}
+                      className="grid size-11 shrink-0 place-items-center rounded-xl border border-line2 text-ink2 hover:text-red-600">
+                      <Icon name="trash" className="size-4" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           ))}

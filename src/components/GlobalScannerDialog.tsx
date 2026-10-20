@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useApp } from "../lib/app-context"
+import { scanFeedback } from "../lib/feedback"
 import Icon from "./Icon"
 
 export default function GlobalScannerDialog({ open, onClose, onScan, readerId = "global-barcode-reader" }: {
@@ -29,6 +30,7 @@ export default function GlobalScannerDialog({ open, onClose, onScan, readerId = 
           (text) => {
             if (found) return
             found = true
+            scanFeedback(true)
             onScan(text)
             onClose()
           },
