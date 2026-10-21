@@ -1,0 +1,4 @@
+project_id = "al-saree"
+
+[functions.make-server-8a5f868b]
+verify_jwt = false

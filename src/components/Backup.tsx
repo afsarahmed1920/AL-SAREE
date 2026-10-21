@@ -7,6 +7,7 @@ import {
 } from "../lib/bulk"
 import { can, loadContext, type BranchRow, type CategoryRow, type Profile } from "../lib/products"
 import Icon from "./Icon"
+import { useFeedback } from "./FeedbackProvider"
 
 const card = "rounded-2xl border border-line bg-surface p-5 sm:p-6"
 const btn =
@@ -354,6 +355,7 @@ function ImportWizard({ profile, branches, categories }: { profile: Profile; bra
 
 function BackupCard({ branches }: { branches: BranchRow[] }) {
   const { t } = useApp()
+  const { confirm, toast } = useFeedback()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -377,12 +379,16 @@ function BackupCard({ branches }: { branches: BranchRow[] }) {
     setMsg(null)
     try {
       const data = parseBackup(await file.text())
-      if (!window.confirm(t("restoreConfirm"))) return
+      if (!await confirm({ title: t("restoreConfirmTitle"), message: t("restoreConfirm"), confirmLabel: t("restoreBackup") })) return
       setBusy(true)
       const r = await restoreBackup(data, branches, () => undefined)
       setMsg({ ok: r.errors.length === 0, text: `${t("restoreDone")} (${r.products.toLocaleString()})${r.errors.length ? ` · ${t("failedN")}: ${r.errors.length}` : ""}` })
+      if (r.errors.length === 0) toast("success", t("restoreDone"))
+      else toast("error", t("restorePartialFailed"))
     } catch (e) {
-      setMsg({ ok: false, text: e instanceof Error && e.message === "INVALID_BACKUP" ? t("invalidBackup") : `${t("saveFailed")} ${(e as { message?: string })?.message ?? ""}` })
+      const message = e instanceof Error && e.message === "INVALID_BACKUP" ? t("invalidBackup") : t("restoreFailed")
+      setMsg({ ok: false, text: message })
+      toast("error", message)
     } finally {
       setBusy(false)
     }

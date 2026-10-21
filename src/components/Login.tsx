@@ -17,9 +17,12 @@ export default function Login() {
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
   const [sessionExpired, setSessionExpired] = useState(() => localStorage.getItem("al-saree-session-expired") === "1")
+  const [sessionRevoked, setSessionRevoked] = useState(() => localStorage.getItem("al-saree-session-revoked") === "1")
   const finishLogin = () => {
     localStorage.removeItem("al-saree-session-expired")
+    localStorage.removeItem("al-saree-session-revoked")
     setSessionExpired(false)
+    setSessionRevoked(false)
     navigate(from?.startsWith("/") ? from : "/", { replace: true })
   }
   const { t, lang } = useApp()
@@ -235,6 +238,11 @@ export default function Login() {
             {sessionExpired && (
               <p role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2.5 text-sm text-amber-100">
                 {t("sessionExpired")}
+              </p>
+            )}
+            {sessionRevoked && (
+              <p role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2.5 text-sm text-amber-100">
+                {t("revokedSessionDetected")}
               </p>
             )}
 

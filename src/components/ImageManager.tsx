@@ -3,6 +3,7 @@ import { useApp } from "../lib/app-context"
 import { makeDraftImage, type DraftImage } from "../lib/products"
 import Icon from "./Icon"
 import ImageEditor from "./ImageEditor"
+import { useFeedback } from "./FeedbackProvider"
 
 const tool =
   "grid size-8 place-items-center rounded-md bg-black/60 text-white backdrop-blur transition hover:bg-black/80 disabled:opacity-30"
@@ -13,6 +14,7 @@ export default function ImageManager({ images, onChange, disabled }: {
   disabled?: boolean
 }) {
   const { t } = useApp()
+  const { confirm } = useFeedback()
   const gallery = useRef<HTMLInputElement>(null)
   const camera = useRef<HTMLInputElement>(null)
   const replaceInput = useRef<HTMLInputElement>(null)
@@ -62,7 +64,8 @@ export default function ImageManager({ images, onChange, disabled }: {
     onChange(next)
   }
 
-  const remove = (key: string) => {
+  const remove = async (key: string) => {
+    if (!await confirm({ title: t("removeImageTitle"), message: t("removeImageMessage"), confirmLabel: t("remove") })) return
     const target = images.find((i) => i.key === key)
     if (target?.blob) URL.revokeObjectURL(target.url)
     onChange(normalise(images.filter((i) => i.key !== key)))

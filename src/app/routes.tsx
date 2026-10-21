@@ -11,7 +11,9 @@ import { useAuth } from "../lib/auth-context"
 import Shell, { type Page } from "../components/Shell"
 import Skeleton from "../components/Skeleton"
 import { useApp } from "../lib/app-context"
-import GlobalScannerDialog from "../components/GlobalScannerDialog"
+import CameraScannerModal from "../components/CameraScannerModal"
+import { checkCurrentSession } from "../lib/security"
+import { useFeedback } from "../components/FeedbackProvider"
 
 const Dashboard = lazy(() => import("../components/Dashboard"))
 const Products = lazy(() => import("../components/Products"))
@@ -67,6 +69,8 @@ function LoginRoute() {
 
 function Workspace() {
   const { t } = useApp()
+  const { confirm } = useFeedback()
+  const { toast } = useFeedback()
   const navigate = useNavigate()
   const params = useParams()
   const { session } = useAuth()
@@ -88,8 +92,33 @@ function Workspace() {
   const [locked, setLocked] = useState(() => sessionStorage.getItem("locked") === "1")
   useEffect(() => {
     if (!session) return
-    startQueueSync()
-  }, [session])
+    startQueueSync(checkCurrentSession)
+  }, [session?.user.id])
+
+  useEffect(() => {
+    if (!session) return
+    let checking = false
+    const check = async () => {
+      if (checking || !navigator.onLine) return
+      checking = true
+      try {
+        const valid = await checkCurrentSession()
+        if (valid === false) toast("error", t("revokedSessionDetected"))
+      } finally { checking = false }
+    }
+    const onVisibility = () => { if (!document.hidden) void check() }
+    const timer = window.setInterval(() => { void check() }, 60_000)
+    window.addEventListener("focus", check)
+    window.addEventListener("online", check)
+    document.addEventListener("visibilitychange", onVisibility)
+    void check()
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener("focus", check)
+      window.removeEventListener("online", check)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [session?.access_token, toast, t])
 
   useEffect(() => {
     if (!session || !userId) return
@@ -221,7 +250,7 @@ function Workspace() {
     })
     if (pending.length || hasStockCount) {
       const message = t("signOutOfflineWarning").replace("{count}", String(pending.length))
-      if (!window.confirm(message)) return
+      if (!await confirm({ title: t("signOutTitle"), message, confirmLabel: t("signOut") })) return
     }
     sessionStorage.removeItem("locked")
     setLocked(false)
@@ -276,7 +305,7 @@ function Workspace() {
         />
       )}
     </Shell>
-    <GlobalScannerDialog open={scannerOpen} onClose={closeScanner} onScan={receiveBarcode} />
+    <CameraScannerModal open={scannerOpen} onClose={closeScanner} onScan={receiveBarcode} readerId="global-barcode-reader" />
     </>
   )
 }

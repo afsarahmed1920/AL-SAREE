@@ -3,6 +3,7 @@ import { AppProvider } from "../lib/app-context"
 import { AuthProvider } from "../lib/auth-context"
 import { hasSupabaseConfig } from "../lib/config"
 import { router } from "./routes"
+import { FeedbackProvider } from "../components/FeedbackProvider"
 
 export default function App() {
   if (!hasSupabaseConfig) {
@@ -21,7 +22,9 @@ export default function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <RouterProvider router={router} />
+        <FeedbackProvider>
+          <RouterProvider router={router} />
+        </FeedbackProvider>
       </AppProvider>
     </AuthProvider>
   )

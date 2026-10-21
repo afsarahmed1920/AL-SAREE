@@ -3,6 +3,7 @@ import { useApp } from "../lib/app-context"
 import { feedbackEnabled, scanFeedback } from "../lib/feedback"
 import { listPasskeys, passkeySupported, registerPasskey, removePasskey, type RegisteredPasskey } from "../lib/passkey"
 import Icon from "./Icon"
+import { useFeedback } from "./FeedbackProvider"
 
 export const lockMinutes = () => Number(localStorage.getItem("auto-lock-min") ?? "5")
 
@@ -25,6 +26,7 @@ function displayPasskeyName(name: string | null, fallback: string) {
 
 export default function SecurityCard() {
   const { t, lang } = useApp()
+  const { confirm, toast } = useFeedback()
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadingPasskeys, setLoadingPasskeys] = useState(true)
@@ -55,22 +57,27 @@ export default function SecurityCard() {
       setMsg({ ok: true, text: t("passkeyAdded") })
       await refreshPasskeys()
     } catch (err) {
-      if ((err as Error)?.name !== "NotAllowedError") setMsg({ ok: false, text: `${t("passkeyFailed")}: ${(err as Error).message}` })
+      if ((err as Error)?.name !== "NotAllowedError") {
+        setMsg({ ok: false, text: t("passkeyFailed") })
+        toast("error", t("passkeyFailed"))
+      }
     } finally {
       setBusy(false)
     }
   }
 
   const remove = async (passkey: RegisteredPasskey) => {
-    if (!window.confirm(t("removePasskeyConfirm"))) return
+    if (!await confirm({ title: t("removePasskey"), message: t("removePasskeyConfirm"), confirmLabel: t("removePasskey") })) return
     setBusy(true)
     setMsg(null)
     try {
       await removePasskey(passkey.id)
       setPasskeys((current) => current.filter((item) => item.id !== passkey.id))
       setMsg({ ok: true, text: t("passkeyRemoved") })
+      toast("success", t("passkeyRemoved"))
     } catch {
       setMsg({ ok: false, text: t("passkeyRemoveFailed") })
+      toast("error", t("passkeyRemoveFailed"))
     } finally {
       setBusy(false)
     }

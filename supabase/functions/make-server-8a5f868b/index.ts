@@ -80,7 +80,20 @@ async function requireUser(request: Request) {
     .maybeSingle()
   if (error) throw new HttpError(503, "Could not verify account permissions")
   if (!profile || !profile.is_active) throw new HttpError(403, "Account is inactive")
-  return { service, authUser: auth.user, profile: profile as Profile }
+  const sessionId = sessionIdFromToken(token)
+  if (!sessionId) throw new HttpError(401, "Invalid session")
+  return { service, authUser: auth.user, profile: profile as Profile, token, sessionId }
+}
+
+function sessionIdFromToken(token: string) {
+  try {
+    const segment = token.split(".")[1]
+    if (!segment) return ""
+    const payload = JSON.parse(new TextDecoder().decode(decodeBase64Url(segment))) as { session_id?: unknown }
+    return typeof payload.session_id === "string" && isUuid(payload.session_id) ? payload.session_id : ""
+  } catch {
+    return ""
+  }
 }
 
 async function requireMaster(request: Request) {
@@ -419,6 +432,82 @@ async function deletePasskey(request: Request) {
   return json({ removed: true })
 }
 
+async function listSessions(request: Request) {
+  const actor = await requireUser(request)
+  const input = await bodyJson(request)
+  const targetId = input.user_id === undefined ? actor.profile.id : input.user_id
+  if (!isUuid(targetId)) throw new HttpError(400, "Invalid account")
+  if (targetId !== actor.profile.id && actor.profile.role !== "master") throw new HttpError(403, "Master access required")
+
+  const { data: target, error: targetError } = await actor.service
+    .from("user_profiles")
+    .select("id,username,full_name,role,is_active")
+    .eq("id", targetId)
+    .maybeSingle()
+  if (targetError) throw new HttpError(503, "Could not verify target account")
+  if (!target) throw new HttpError(404, "Account not found")
+  if (target.id !== actor.profile.id && target.role === "master") throw new HttpError(403, "Only staff sessions can be managed here")
+
+  const { data, error } = await actor.service.rpc("list_auth_sessions", { p_user_id: target.id })
+  if (error) throw new HttpError(503, "Could not load active sessions")
+  const sessions = (data ?? []).map((row: Record<string, unknown>) => ({
+    session_id: row.session_id,
+    user_agent: row.user_agent,
+    ip: row.ip,
+    created_at: row.created_at,
+    last_activity: row.last_activity,
+    is_current: target.id === actor.profile.id && row.session_id === actor.sessionId,
+  }))
+  return json({ sessions, target: { id: target.id, username: target.username, full_name: target.full_name, role: target.role } })
+}
+
+async function revokeSessions(request: Request, mode: "one" | "all") {
+  const actor = await requireUser(request)
+  const input = await bodyJson(request)
+  const targetId = input.user_id
+  if (!isUuid(targetId)) throw new HttpError(400, "Invalid account")
+  if (targetId !== actor.profile.id && actor.profile.role !== "master") throw new HttpError(403, "Master access required")
+
+  const { data: target, error: targetError } = await actor.service
+    .from("user_profiles")
+    .select("id,role,is_active")
+    .eq("id", targetId)
+    .maybeSingle()
+  if (targetError) throw new HttpError(503, "Could not verify target account")
+  if (!target) throw new HttpError(404, "Account not found")
+  if (target.id !== actor.profile.id && target.role === "master") throw new HttpError(403, "Only staff sessions can be managed here")
+
+  let sessionId: string | null = null
+  let exceptCurrent: string | null = null
+  if (mode === "one") {
+    if (!isUuid(input.session_id)) throw new HttpError(400, "Invalid session")
+    sessionId = input.session_id
+  } else {
+    if (typeof input.except_current !== "boolean") throw new HttpError(400, "Invalid session request")
+    if (input.except_current) {
+      if (target.id !== actor.profile.id) throw new HttpError(400, "Only the signed-in account can keep its current session")
+      exceptCurrent = actor.sessionId
+    }
+  }
+  const { data: count, error } = await actor.service.rpc("revoke_auth_sessions", {
+    p_target_user_id: target.id,
+    p_actor_user_id: actor.profile.id,
+    p_session_id: sessionId,
+    p_except_session_id: exceptCurrent,
+  })
+  if (error) throw new HttpError(503, "Could not revoke sessions")
+  return json({ revoked: mode === "one" ? Number(count) > 0 : true, count: Number(count), revoked_current: sessionId === actor.sessionId || (target.id === actor.profile.id && !exceptCurrent) })
+}
+
+async function checkCurrentSession(request: Request) {
+  const actor = await requireUser(request)
+  const input = await bodyJson(request)
+  if (input.session_id !== actor.sessionId) throw new HttpError(400, "Session does not match the authenticated token")
+  const { data, error } = await actor.service.rpc("list_auth_sessions", { p_user_id: actor.profile.id })
+  if (error) throw new HttpError(503, "Could not validate session")
+  return json({ valid: (data ?? []).some((row: Record<string, unknown>) => row.session_id === actor.sessionId) })
+}
+
 async function authenticationOptions() {
   const service = serviceClient()
   const config = await passkeyConfig(service)
@@ -526,6 +615,10 @@ async function handle(request: Request) {
   if (path === "/passkey/register/verify") return await verifyRegistration(request)
   if (path === "/passkey/manage/list") return await listPasskeys(request)
   if (path === "/passkey/manage/delete") return await deletePasskey(request)
+  if (path === "/sessions/list") return await listSessions(request)
+  if (path === "/sessions/revoke") return await revokeSessions(request, "one")
+  if (path === "/sessions/revoke-all") return await revokeSessions(request, "all")
+  if (path === "/sessions/check") return await checkCurrentSession(request)
   if (path === "/passkey/login/options") return await authenticationOptions()
   if (path === "/passkey/login/verify") return await verifyAuthentication(request)
 

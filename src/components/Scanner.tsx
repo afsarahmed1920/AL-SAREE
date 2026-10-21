@@ -16,6 +16,7 @@ import Icon from "./Icon"
 import { scanFeedback } from "../lib/feedback"
 import { shareProductCard } from "../lib/share-card"
 import { useCompanyName } from "./Logo"
+import CameraScannerModal from "./CameraScannerModal"
 
 type CalculatorLine = {
   id: string
@@ -121,48 +122,6 @@ export default function Scanner({ branchCode, scanCode, onScanCodeHandled }: { b
     window.addEventListener("keydown", listen)
     return () => window.removeEventListener("keydown", listen)
   }, [lookup])
-
-  useEffect(() => {
-    if (!cameraOpen) return
-    let scanner: import("html5-qrcode").Html5Qrcode | null = null
-    let startPromise: Promise<unknown> | null = null
-    let disposed = false
-    setCameraError("")
-    void import("html5-qrcode")
-      .then(({ Html5Qrcode }) => {
-        if (disposed) return
-        scanner = new Html5Qrcode("barcode-reader")
-        startPromise = scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 260, height: 140 } },
-          (decodedText) => {
-            lookup(decodedText)
-            setCameraOpen(false)
-          },
-          () => undefined,
-        )
-      })
-      .catch((err: unknown) => {
-        if (disposed) return
-        const reason = typeof err === "string" ? err : (err as Error)?.message ?? ""
-        setCameraError(!window.isSecureContext
-          ? t("cameraHttpsHelp")
-          : /permission|denied|notallowed/i.test(reason)
-            ? t("cameraPermissionHelp")
-            : t("cameraError"))
-        setCameraOpen(false)
-      })
-
-    return () => {
-      disposed = true
-      if (!scanner) return
-      if (startPromise) {
-        void startPromise.then(() => scanner?.isScanning ? scanner.stop() : undefined)
-          .catch(() => undefined)
-          .finally(() => scanner?.clear())
-      } else scanner.clear()
-    }
-  }, [cameraOpen, lookup, t])
 
   const scanPhoto = async (file?: File) => {
     if (!file) return
@@ -308,18 +267,7 @@ export default function Scanner({ branchCode, scanCode, onScanCodeHandled }: { b
         )}
       </section>
 
-      {cameraOpen && (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/75 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={t("scanBarcode")}>
-          <section className="w-full max-w-xl overflow-hidden rounded-3xl border border-white/15 bg-surface shadow-2xl">
-            <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-              <h2 className="font-semibold text-ink">{t("scanBarcode")}</h2>
-              <button type="button" onClick={() => setCameraOpen(false)} aria-label={t("closeCamera")} className="grid size-10 place-items-center rounded-full text-ink2 hover:bg-surface2"><Icon name="x" className="size-5" /></button>
-            </header>
-            <div id="barcode-reader" className="mx-auto min-h-48 max-w-xl overflow-hidden bg-black" />
-            <p className="p-4 text-center text-sm text-ink2">{t("cameraHint")}</p>
-          </section>
-        </div>
-      )}
+      <CameraScannerModal open={cameraOpen} onClose={() => setCameraOpen(false)} onScan={lookup} readerId="barcode-lookup-reader" />
 
       {!result && !cameraOpen && (
         <section className="grid min-h-72 place-items-center rounded-2xl border border-dashed border-line2 bg-surface p-8 text-center">

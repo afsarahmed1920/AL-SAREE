@@ -4,11 +4,14 @@ import { findCatalogProduct, getCachedCatalog, syncBranchCatalog, type CatalogPr
 import { scanFeedback } from "../lib/feedback"
 import Icon from "./Icon"
 import { SkeletonBlock } from "./Skeleton"
+import CameraScannerModal from "./CameraScannerModal"
+import { useFeedback } from "./FeedbackProvider"
 
 const storageKey = (branch: string) => `stock-count:${branch}`
 
 export default function StockCount({ branchCode }: { branchCode: string }) {
   const { t, lang } = useApp()
+  const { confirm, toast } = useFeedback()
   const [catalog, setCatalog] = useState<CatalogProduct[] | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [order, setOrder] = useState<string[]>([])
@@ -90,35 +93,6 @@ export default function StockCount({ branchCode }: { branchCode: string }) {
     return () => window.removeEventListener("keydown", listen)
   }, [add])
 
-  // Continuous camera scanning; the same code is ignored for 1.5s to avoid double counts.
-  useEffect(() => {
-    if (!camera) return
-    let scanner: import("html5-qrcode").Html5Qrcode | null = null
-    let disposed = false
-    void import("html5-qrcode")
-      .then(({ Html5Qrcode }) => {
-        if (disposed) return
-        scanner = new Html5Qrcode("count-reader")
-        return scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 260, height: 130 } },
-          (text) => {
-            const now = Date.now()
-            if (text === lastCam.current.code && now - lastCam.current.at < 1500) return
-            lastCam.current = { code: text, at: now }
-            add(text)
-          },
-          () => undefined,
-        )
-      })
-      .catch(() => setCamera(false))
-    return () => {
-      disposed = true
-      if (scanner?.isScanning) void scanner.stop().finally(() => scanner?.clear())
-      else scanner?.clear()
-    }
-  }, [camera, add])
-
   const byId = useMemo(() => new Map((catalog ?? []).map((p) => [p.product_id, p])), [catalog])
   const rows = useMemo(() => {
     const ids = [...order]
@@ -197,10 +171,11 @@ export default function StockCount({ branchCode }: { branchCode: string }) {
             <Icon name="upload" className="size-4" /> {t("exportCount")}
           </button>
           <button
-            onClick={() => {
-              if (confirm(t("resetCountConfirm"))) {
+            onClick={async () => {
+              if (await confirm({ title: t("resetCount"), message: t("resetCountConfirm"), confirmLabel: t("resetCount") })) {
                 setCounts({})
                 setOrder([])
+                toast("success", t("countResetDone"))
               }
             }}
             disabled={!order.length}
@@ -223,7 +198,6 @@ export default function StockCount({ branchCode }: { branchCode: string }) {
             <Icon name={camera ? "x" : "camera"} className="size-5" />
           </button>
         </form>
-        {camera && <div id="count-reader" className="mt-3 overflow-hidden rounded-2xl bg-black" />}
         <p className="mt-3 text-xs text-ink2">{t("hardwareHint")}</p>
         {miss && (
           <p role="alert" className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
@@ -231,6 +205,20 @@ export default function StockCount({ branchCode }: { branchCode: string }) {
           </p>
         )}
       </section>
+
+      <CameraScannerModal
+        open={camera}
+        onClose={() => setCamera(false)}
+        onScan={(text) => {
+          const now = Date.now()
+          if (text === lastCam.current.code && now - lastCam.current.at < 1500) return
+          lastCam.current = { code: text, at: now }
+          add(text)
+        }}
+        mode="continuous"
+        playFeedback={false}
+        readerId="count-camera-reader"
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stat(t("counted"), summary.units, "text-ink")}

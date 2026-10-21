@@ -117,14 +117,22 @@ export function flushQueue() {
 
 let started = false
 let runQueueSync: (() => void) | null = null
-export function startQueueSync() {
+let beforeQueueSync: (() => Promise<boolean | null>) | null = null
+export function startQueueSync(validate?: () => Promise<boolean | null>) {
+  if (validate) beforeQueueSync = validate
   if (started) {
     runQueueSync?.()
     return
   }
   started = true
   runQueueSync = () => {
-    if (navigator.onLine) void flushQueue()
+    if (!navigator.onLine) return
+    void (async () => {
+      const valid = await beforeQueueSync?.()
+      // When session validation is configured, don't flush potentially sensitive
+      // queued edits until the server confirms that this browser session is valid.
+      if (!beforeQueueSync || valid === true) await flushQueue()
+    })()
   }
   window.addEventListener("online", runQueueSync)
   runQueueSync()

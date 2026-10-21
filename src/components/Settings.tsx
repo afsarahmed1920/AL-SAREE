@@ -1,4 +1,6 @@
 import SecurityCard from "./SecurityCard"
+import ActiveSessions from "./ActiveSessions"
+import { useFeedback } from "./FeedbackProvider"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useApp } from "../lib/app-context"
 import { loadContext, type BranchRow, type Profile } from "../lib/products"
@@ -49,6 +51,7 @@ type SessionLimitUser = { id: string; username: string; full_name: string; sessi
 
 function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onChange: (branches: BranchRow[]) => void }) {
   const { t } = useApp()
+  const { toast } = useFeedback()
   const [drafts, setDrafts] = useState<Record<string, Pick<BranchRow, "code" | "name_en" | "name_ar">>>({})
   const [adding, setAdding] = useState(false)
   const [newBranch, setNewBranch] = useState({ code: "", name_en: "", name_ar: "" })
@@ -64,6 +67,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     const values = { code: draft?.code.trim().toUpperCase(), name_en: draft?.name_en.trim(), name_ar: draft?.name_ar.trim() }
     if (!values.code || !values.name_en || !values.name_ar) {
       setMessage({ text: t("branchSaveFailed"), error: true })
+      toast("error", t("branchSaveFailed"))
       return
     }
     setBusy(branch.id)
@@ -71,6 +75,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     const { data, error } = await supabase.from("branches").update(values).eq("id", branch.id).select("id,code,name_en,name_ar").maybeSingle()
     if (error || !data) {
       setMessage({ text: error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"), error: true })
+      toast("error", error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"))
       setBusy(null)
       return
     }
@@ -78,6 +83,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     onChange(updated)
     window.dispatchEvent(new Event("branches-updated"))
     setMessage({ text: t("branchSaved"), error: false })
+    toast("success", t("branchSaved"))
     setBusy(null)
   }
 
@@ -85,6 +91,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     const values = { code: newBranch.code.trim().toUpperCase(), name_en: newBranch.name_en.trim(), name_ar: newBranch.name_ar.trim() }
     if (!values.code || !values.name_en || !values.name_ar) {
       setMessage({ text: t("branchSaveFailed"), error: true })
+      toast("error", t("branchSaveFailed"))
       return
     }
     setBusy("new")
@@ -92,6 +99,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     const { data, error } = await supabase.from("branches").insert(values).select("id,code,name_en,name_ar").single()
     if (error || !data) {
       setMessage({ text: error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"), error: true })
+      toast("error", error?.code === "23505" ? t("branchCodeInUse") : t("branchSaveFailed"))
       setBusy(null)
       return
     }
@@ -100,6 +108,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
     setNewBranch({ code: "", name_en: "", name_ar: "" })
     setAdding(false)
     setMessage({ text: t("branchAdded"), error: false })
+    toast("success", t("branchAdded"))
     setBusy(null)
   }
 
@@ -139,6 +148,7 @@ function BranchManagement({ branches, onChange }: { branches: BranchRow[]; onCha
 
 function SessionLimitsCard() {
   const { t } = useApp()
+  const { toast } = useFeedback()
   const [users, setUsers] = useState<SessionLimitUser[]>([])
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
@@ -163,6 +173,7 @@ function SessionLimitsCard() {
     const minutes = Number(drafts[user.id])
     if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
       setMessage({ text: t("sessionLimitRange"), error: true })
+      toast("error", t("sessionLimitRange"))
       return
     }
     setBusy(user.id)
@@ -179,8 +190,10 @@ function SessionLimitsCard() {
       setUsers((current) => current.map((row) => row.id === user.id ? { ...row, session_duration_minutes: minutes } : row))
       window.dispatchEvent(new Event("session-limit-change"))
       setMessage({ text: t("sessionLimitSaved"), error: false })
+      toast("success", t("sessionLimitSaved"))
     } catch {
       setMessage({ text: t("couldNotSaveSessionLimit"), error: true })
+      toast("error", t("couldNotSaveSessionLimit"))
     } finally {
       setBusy(null)
     }
@@ -225,6 +238,7 @@ function SessionLimitsCard() {
 
 export default function Settings() {
   const { t } = useApp()
+  const { confirm, toast } = useFeedback()
   const stored = useSettings()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [branches, setBranches] = useState<BranchRow[]>([])
@@ -266,7 +280,9 @@ export default function Settings() {
       const error = e as { message?: string; code?: string }
       const internal = `${error?.message ?? ""} ${error?.code ?? ""}`
       const isAccess = error?.code === "42501" || error?.message === "SETTINGS_PERMISSION_DENIED" || /row-level security|permission denied/i.test(internal)
-      setMsg({ ok: false, text: isAccess ? t("masterOnly") : t("settingsSaveFailed") })
+      const message = isAccess ? t("masterOnly") : t("settingsSaveFailed")
+      setMsg({ ok: false, text: message })
+      toast("error", message)
     } finally {
       setBusy(false)
     }
@@ -279,15 +295,19 @@ export default function Settings() {
       const next = { ...form, logo_url: url }
       await saveSettings(next)
       setMsg({ ok: true, text: t("settingsSaved") })
+      toast("success", t("settingsSaved"))
     })
   }
 
-  const onRemoveLogo = () =>
+  const onRemoveLogo = async () => {
+    if (!await confirm({ title: t("removeLogo"), message: t("removeLogoConfirm"), confirmLabel: t("removeLogo") })) return
     void run(async () => {
       await removeLogo()
       await saveSettings({ ...form, logo_url: null })
       setMsg({ ok: true, text: t("settingsSaved") })
+      toast("success", t("settingsSaved"))
     })
+  }
 
   const addSuggested = () =>
     void run(async () => {
@@ -300,12 +320,14 @@ export default function Settings() {
         if (error) throw error
       }
       setMsg({ ok: true, text: `${t("categoriesAdded")} (${missing.length})` })
+      toast("success", `${t("categoriesAdded")} (${missing.length})`)
     })
 
   const save = () =>
     void run(async () => {
       await saveSettings(form)
       setMsg({ ok: true, text: t("settingsSaved") })
+      toast("success", t("settingsSaved"))
     })
 
   const numbers = form.contact_numbers.length ? form.contact_numbers : [""]
@@ -318,6 +340,8 @@ export default function Settings() {
       </div>
 
       <SecurityCard />
+
+      {profile?.id && <ActiveSessions userId={profile.id} />}
 
       {profile?.role === "master" && <SessionLimitsCard />}
       {profile?.role === "master" && <BranchManagement branches={branches} onChange={setBranches} />}
@@ -364,7 +388,7 @@ export default function Settings() {
             <div key={i} className="flex gap-2">
               <input className={input} dir="ltr" inputMode="tel" value={n} placeholder="+966 ..."
                 onChange={(e) => set("contact_numbers", numbers.map((x, j) => (j === i ? e.target.value : x)))} />
-              <button type="button" aria-label={t("remove")} onClick={() => set("contact_numbers", numbers.filter((_, j) => j !== i))}
+              <button type="button" aria-label={t("remove")} onClick={async () => { if (await confirm({ title: t("removeContactTitle"), message: t("removeContactMessage"), confirmLabel: t("remove") })) set("contact_numbers", numbers.filter((_, j) => j !== i)) }}
                 className="grid size-11 shrink-0 place-items-center rounded-xl border border-line2 text-ink2 hover:bg-surface2">
                 <Icon name="trash" className="size-4" />
               </button>

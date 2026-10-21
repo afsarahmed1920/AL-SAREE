@@ -19,13 +19,16 @@ import ProductDetailModal from "./ProductDetailModal"
 import Skeleton from "./Skeleton"
 import { listQueue, onQueueChange } from "../lib/offline-queue"
 import { supabase } from "../lib/supabase"
+import { useFeedback } from "./FeedbackProvider"
 
 type Ctx = { profile: Profile; branches: BranchRow[]; categories: CategoryRow[] }
 type Filter = "all" | "noBarcode" | "noImage" | "lowStock"
+type ArchivedProduct = { id: string; product_code: string; name_en: string; name_ar: string | null }
 const PAGE = 60
 
 export default function Products({ branchCode }: { branchCode: string }) {
   const { t, lang, sar } = useApp()
+  const { toast, confirm } = useFeedback()
   const [ctx, setCtx] = useState<Ctx | null>(null)
   const [error, setError] = useState("")
   const [catalog, setCatalog] = useState<CatalogProduct[]>([])
@@ -43,6 +46,9 @@ export default function Products({ branchCode }: { branchCode: string }) {
   const closeDetail = useCallback(() => setDetailProduct(null), [])
   const [pending, setPending] = useState(0)
   const [sheet, setSheet] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedProducts, setArchivedProducts] = useState<ArchivedProduct[]>([])
+  const [archiveBusy, setArchiveBusy] = useState(false)
 
   useEffect(() => {
     const read = () => void listQueue().then((q) => setPending(q.length)).catch(() => undefined)
@@ -144,6 +150,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
   const afterSave = async (saved: { id: string; code: string }, draft: ProductDraft) => {
     setForm(null)
     setNotice(navigator.onLine ? t("saved") : t("queuedOffline"))
+    toast("success", navigator.onLine ? t("saved") : t("queuedOffline"))
     const activeContext = ctx
     const branch = activeContext?.branches.find((item) => item.code === branchCode)
     const branchDraft = branch ? draft.branches[branch.id] : null
@@ -194,6 +201,42 @@ export default function Products({ branchCode }: { branchCode: string }) {
     window.scrollTo({ top: 0 })
   }
 
+  const loadArchived = async () => {
+    const { data, error: queryError } = await supabase.from("products")
+      .select("id,product_code,name_en,name_ar").eq("status", "archived").order("name_en")
+    if (queryError) throw queryError
+    setArchivedProducts((data ?? []) as ArchivedProduct[])
+  }
+
+  const archive = async (product: CatalogProduct) => {
+    if (!navigator.onLine) { toast("error", t("archiveOnlineRequired")); return }
+    if (!await confirm({ title: t("archiveProductTitle"), message: t("archiveProductMessage"), confirmLabel: t("archiveProduct") })) return
+    setArchiveBusy(true)
+    try {
+      const { error: updateError } = await supabase.from("products").update({ status: "archived" }).eq("id", product.product_id)
+      if (updateError) throw updateError
+      setCatalog((items) => items.filter((item) => item.product_id !== product.product_id))
+      await Promise.allSettled((ctx?.branches ?? []).map((branch) => updateCachedProduct(branch.code, product, false)))
+      await loadArchived().catch(() => undefined)
+      toast("success", t("productArchived"))
+    } catch { toast("error", t("productArchiveFailed")) }
+    finally { setArchiveBusy(false) }
+  }
+
+  const restore = async (product: ArchivedProduct) => {
+    if (!await confirm({ title: t("restoreProductTitle"), message: t("restoreProductMessage"), confirmLabel: t("restoreProduct") })) return
+    setArchiveBusy(true)
+    try {
+      const { error: updateError } = await supabase.from("products").update({ status: "active" }).eq("id", product.id)
+      if (updateError) throw updateError
+      setArchivedProducts((items) => items.filter((item) => item.id !== product.id))
+      const fresh = await syncBranchCatalog(branchCode)
+      setCatalog(fresh.products)
+      toast("success", t("productRestored"))
+    } catch { toast("error", t("productArchiveFailed")) }
+    finally { setArchiveBusy(false) }
+  }
+
   if (error) {
     return <p role="alert" className="mx-auto max-w-3xl rounded-2xl border border-red-300 bg-red-50 p-5 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</p>
   }
@@ -240,6 +283,23 @@ export default function Products({ branchCode }: { branchCode: string }) {
               </button>
             )}
           </div>
+
+          {profile.role === "master" && (
+            <div className="space-y-3">
+              <button type="button" aria-expanded={showArchived} onClick={() => {
+                const next = !showArchived
+                setShowArchived(next)
+                if (next) void loadArchived().catch(() => toast("error", t("productArchiveFailed")))
+              }} className="h-10 rounded-xl border border-line2 px-4 text-sm font-semibold text-ink">{showArchived ? t("hideArchived") : t("showArchived")}</button>
+              {showArchived && <section className="overflow-hidden rounded-2xl border border-line bg-surface" aria-label={t("archivedProducts")}>
+                <h2 className="border-b border-line px-4 py-3 font-semibold text-ink">{t("archivedProducts")} · {archivedProducts.length}</h2>
+                {archivedProducts.length ? <ul className="divide-y divide-line">{archivedProducts.map((product) => <li key={product.id} className="flex items-center gap-3 p-3">
+                  <div className="min-w-0 flex-1"><p className="truncate font-medium text-ink">{lang === "ar" && product.name_ar ? product.name_ar : product.name_en}</p><p className="text-xs text-ink2" dir="ltr">{product.product_code}</p></div>
+                  <button type="button" disabled={archiveBusy} onClick={() => void restore(product)} className="h-10 rounded-lg bg-brand px-3 text-sm font-semibold text-on-brand disabled:opacity-50">{t("restoreProduct")}</button>
+                </li>)}</ul> : <p className="p-4 text-sm text-ink2">{t("noArchivedProducts")}</p>}
+              </section>}
+            </div>
+          )}
 
           {!online && <p className="rounded-xl bg-surface2 px-4 py-3 text-sm text-ink2">{t("offlineEditOk")}</p>}
           {pending > 0 && (
@@ -318,6 +378,8 @@ export default function Products({ branchCode }: { branchCode: string }) {
                           <Icon name="pencil" className="size-[18px]" />
                         </button>
                       )}
+                      {can.editProducts(profile) && <button type="button" disabled={archiveBusy || !online} onClick={() => void archive(p)} aria-label={t("archiveProduct")} title={t("archiveProduct")}
+                        className="grid size-10 place-items-center rounded-lg border border-line2 text-red-600 disabled:opacity-50"><Icon name="box" className="size-[18px]" /></button>}
                     </div>
                   </li>
                 )

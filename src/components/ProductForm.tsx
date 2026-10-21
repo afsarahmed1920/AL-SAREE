@@ -13,7 +13,8 @@ import {
 } from "../lib/products"
 import ImageManager from "./ImageManager"
 import Icon from "./Icon"
-import GlobalScannerDialog from "./GlobalScannerDialog"
+import CameraScannerModal from "./CameraScannerModal"
+import { useFeedback } from "./FeedbackProvider"
 
 const input =
   "h-11 w-full rounded-xl border border-line2 bg-app px-3.5 text-ink outline-none focus:border-focus focus:ring-2 focus:ring-focus/20 disabled:opacity-60"
@@ -84,6 +85,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
   onSticker: (draft: ProductDraft, retail: number | null) => void
 }) {
   const { t, lang } = useApp()
+  const { confirm, toast } = useFeedback()
   const [draft, setDraft] = useState(initial)
   const [tab, setTab] = useState(
     () => branches.find((b) => initial.branches[b.id]?.available)?.id ?? branches[0]?.id ?? "",
@@ -159,12 +161,12 @@ export default function ProductForm({ initial, original, profile, branches, cate
       }
     } catch (err) {
       const message = (err as { message?: string })?.message ?? ""
-      setError(
-        message === "INVALID_NUMBER" ? t("invalidNumber")
+      const safeMessage = message === "INVALID_NUMBER" ? t("invalidNumber")
         : message === "DUPLICATE_BARCODE" ? t("duplicateBarcode")
-        : (err as { code?: string })?.code === "23505" ? `${t("saveFailed")}: ${draft.code}`
-        : `${t("saveFailed")}: ${message}`,
-      )
+        : (err as { code?: string })?.code === "23505" ? t("duplicateProductCode")
+        : t("productSaveError")
+      setError(safeMessage)
+      toast("error", safeMessage)
     } finally {
       setSaving(false)
     }
@@ -318,7 +320,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
                   </button>
                   {draft.barcodes.length > 0 && (
                     <button type="button" aria-label={t("remove")}
-                      onClick={() => patch({ barcodes: draft.barcodes.filter((_, i) => i !== index) })}
+                      onClick={async () => { if (await confirm({ title: t("removeBarcodeTitle"), message: t("removeBarcodeMessage"), confirmLabel: t("remove") })) patch({ barcodes: draft.barcodes.filter((_, i) => i !== index) }) }}
                       className="grid size-11 shrink-0 place-items-center rounded-xl border border-line2 text-ink2 hover:text-red-600">
                       <Icon name="trash" className="size-4" />
                     </button>
@@ -331,7 +333,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
         {barcodeNotice && <p role="alert" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{barcodeNotice}</p>}
       </section>
 
-      <GlobalScannerDialog
+      <CameraScannerModal
         open={barcodeCameraOpen}
         onClose={closeBarcodeCamera}
         onScan={receiveBarcode}

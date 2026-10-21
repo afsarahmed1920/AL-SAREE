@@ -12,6 +12,7 @@ import {
   type StaffUser,
 } from "../lib/users"
 import Icon from "./Icon"
+import ActiveSessions from "./ActiveSessions"
 
 const input =
   "h-11 w-full rounded-xl border border-line2 bg-app px-3.5 text-ink outline-none focus:border-focus focus:ring-2 focus:ring-focus/20 disabled:opacity-60"
@@ -196,6 +197,8 @@ function Editor({ initial, branches, self, onCancel, onSaved }: {
           ))}
         </div>
       </section>
+
+      {!isNew && user.role !== "master" && <ActiveSessions userId={user.id} userName={user.full_name || user.username} managed />}
 
       <section className={card}>
         <h2 className="mb-1 font-display text-lg font-semibold text-ink">{t("permissions")}</h2>
