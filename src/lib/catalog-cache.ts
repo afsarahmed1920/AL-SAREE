@@ -13,6 +13,7 @@ export type CatalogProduct = {
   branch_code: string | null
   track_stock: boolean
   stock_quantity: number | null
+  setup_incomplete?: boolean
   purchase_price?: number
   wholesale_price?: number
   retail_price?: number
@@ -215,16 +216,17 @@ export async function syncBranchCatalog(branchCode: string) {
 export function findCatalogProduct(products: CatalogProduct[], query: string) {
   const needle = query.trim().toLocaleLowerCase()
   if (!needle) return null
+  const configured = products.filter((product) => !product.setup_incomplete)
 
   return (
-    products.find(
+    configured.find(
       (product) =>
         product.product_code.toLocaleLowerCase() === needle ||
         product.barcodes.some(
           (barcode) => barcode.toLocaleLowerCase() === needle,
         ),
     ) ??
-    products.find(
+    configured.find(
       (product) =>
         product.product_code.toLocaleLowerCase().includes(needle) ||
         product.name_en.toLocaleLowerCase().includes(needle) ||

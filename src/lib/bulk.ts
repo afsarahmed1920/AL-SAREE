@@ -139,7 +139,7 @@ export async function loadVisibleCatalogs(branches: BranchRow[]) {
   const results = await Promise.all(
     branches.map(async (b) => {
       const { data, error } = await supabase.rpc("get_branch_catalog_secure", { p_branch_id: b.id })
-      return error ? null : { branch: b, rows: (data ?? []) as CatalogProduct[] }
+      return error ? null : { branch: b, rows: ((data ?? []) as CatalogProduct[]).filter((product) => !product.setup_incomplete) }
     }),
   )
   return results.filter((r): r is { branch: BranchRow; rows: CatalogProduct[] } => !!r)

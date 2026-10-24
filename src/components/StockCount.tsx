@@ -32,14 +32,14 @@ export default function StockCount({ branchCode }: { branchCode: string }) {
     let active = true
     void (async () => {
       const cached = await getCachedCatalog(branchCode).catch(() => null)
-      if (active && cached) setCatalog(cached.products)
+      if (active && cached) setCatalog(cached.products.filter((product) => !product.setup_incomplete))
       if (!navigator.onLine) {
         if (active && !cached) setCatalog([])
         return
       }
       try {
         const fresh = await syncBranchCatalog(branchCode)
-        if (active) setCatalog(fresh.products)
+        if (active) setCatalog(fresh.products.filter((product) => !product.setup_incomplete))
       } catch {
         if (active && !cached) setCatalog([])
       }

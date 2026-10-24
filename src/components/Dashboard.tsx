@@ -31,11 +31,11 @@ export default function Dashboard({ branchCode, branchName, user, onScan }: { br
       try {
         const cached = await getCachedCatalog(branchCode).catch(() => null)
         if (alive && cached) {
-          setProducts(cached.products)
+          setProducts(cached.products.filter((product) => !product.setup_incomplete))
           setLoadedBranch(branchCode)
         }
         const fresh = await syncBranchCatalog(branchCode)
-        if (alive) { setProducts(fresh.products); setCatalogIssue(false) }
+        if (alive) { setProducts(fresh.products.filter((product) => !product.setup_incomplete)); setCatalogIssue(false) }
       } catch {
         if (alive) setCatalogIssue(true)
       } finally {

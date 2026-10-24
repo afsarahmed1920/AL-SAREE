@@ -22,7 +22,7 @@ import { supabase } from "../lib/supabase"
 import { useFeedback } from "./FeedbackProvider"
 
 type Ctx = { profile: Profile; branches: BranchRow[]; categories: CategoryRow[] }
-type Filter = "all" | "noBarcode" | "noImage" | "lowStock"
+type Filter = "all" | "noBarcode" | "noImage" | "lowStock" | "needsSetup"
 type ArchivedProduct = { id: string; product_code: string; name_en: string; name_ar: string | null }
 const PAGE = 60
 
@@ -112,6 +112,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
     return catalog.filter((p) => {
+      if (filter === "needsSetup" ? !p.setup_incomplete : p.setup_incomplete) return false
       if (category && p.category_id !== category) return false
       if (filter === "noBarcode" && p.barcodes.length) return false
       if (filter === "noImage" && p.images.length) return false
@@ -137,7 +138,8 @@ export default function Products({ branchCode }: { branchCode: string }) {
       } else if (id === null) {
         setForm({ draft: await newDraft(ctx.branches, branchCode), original: null })
       } else {
-        const draft = await loadDraft(id, ctx.branches)
+        const activeBranch = ctx.branches.find((branch) => branch.code === branchCode)
+        const draft = await loadDraft(id, ctx.branches, activeBranch?.id)
         setForm({ draft, original: structuredClone(draft) })
       }
     } catch (err) {
@@ -192,6 +194,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
         retail_price: can.view(activeContext.profile, "retail") ? numberOrNull(branchDraft.retail) ?? undefined : previous?.retail_price,
         barcodes: draft.barcodes.map((barcode) => barcode.trim()).filter(Boolean),
         images,
+        setup_incomplete: false,
       }
       await updateCachedProduct(branchCode, updated, branchDraft.available).catch(() => false)
     }
@@ -332,6 +335,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
             {chip("noBarcode", t("noBarcode"))}
             {chip("noImage", t("noImage"))}
             {chip("lowStock", t("lowStock"))}
+            {can.editProducts(profile) && chip("needsSetup", t("needsSetup"))}
           </div>
 
           {filtered.length === 0 ? (
@@ -356,6 +360,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
                           <span dir="ltr">{p.product_code}</span> · {catName(p)}
                           {!p.barcodes.length && <span className="ms-2 font-medium text-accent">{t("noBarcode")}</span>}
                         </p>
+                        {p.setup_incomplete && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">{t("setupIncomplete")}</span>}
                       </div>
                     </button>
                     <div className="hidden text-end sm:block">
@@ -372,12 +377,17 @@ export default function Products({ branchCode }: { branchCode: string }) {
                         className="grid size-10 place-items-center rounded-lg border border-line2 text-ink2 hover:text-ink">
                         <Icon name="print" className="size-[18px]" />
                       </button>
-                      {canEdit && (
+                      {canEdit && p.setup_incomplete ? (
+                        <button type="button" onClick={() => void open(p.product_id)} disabled={busy} aria-label={t("completeSetup")} title={t("completeSetup")}
+                          className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-3 text-sm font-semibold text-on-brand disabled:opacity-50">
+                          <Icon name="pencil" className="size-4" /> {t("completeSetup")}
+                        </button>
+                      ) : canEdit ? (
                         <button onClick={() => void open(p.product_id)} disabled={busy} aria-label={t("edit")} title={t("edit")}
                           className="grid size-10 place-items-center rounded-lg bg-brand text-on-brand disabled:opacity-50">
                           <Icon name="pencil" className="size-[18px]" />
                         </button>
-                      )}
+                      ) : null}
                       {can.editProducts(profile) && <button type="button" disabled={archiveBusy || !online} onClick={() => void archive(p)} aria-label={t("archiveProduct")} title={t("archiveProduct")}
                         className="grid size-10 place-items-center rounded-lg border border-line2 text-red-600 disabled:opacity-50"><Icon name="box" className="size-[18px]" /></button>}
                     </div>
@@ -415,6 +425,7 @@ export default function Products({ branchCode }: { branchCode: string }) {
               {chip("noBarcode", t("noBarcode"))}
               {chip("noImage", t("noImage"))}
               {chip("lowStock", t("lowStock"))}
+              {can.editProducts(profile) && chip("needsSetup", t("needsSetup"))}
             </div>
             <button onClick={() => setSheet(false)} className="mt-6 h-12 w-full rounded-2xl bg-brand font-semibold text-on-brand">
               {t("apply")} ({filtered.length})

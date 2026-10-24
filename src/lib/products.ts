@@ -129,6 +129,7 @@ export async function newDraft(branches: BranchRow[], activeCode?: string): Prom
 
 type RpcRow = {
   product_id: string
+  setup_incomplete?: boolean
   branch_code?: string | null
   track_stock?: boolean
   stock_quantity?: number | null
@@ -137,7 +138,7 @@ type RpcRow = {
   retail_price?: number | null
 }
 
-export async function loadDraft(productId: string, branches: BranchRow[]): Promise<ProductDraft> {
+export async function loadDraft(productId: string, branches: BranchRow[], defaultBranchId?: string): Promise<ProductDraft> {
   const [product, barcodes, images, ...catalogs] = await Promise.all([
     supabase.from("products").select("*").eq("id", productId).single(),
     supabase.from("product_barcodes").select("barcode").eq("product_id", productId).order("created_at"),
@@ -160,7 +161,7 @@ export async function loadDraft(productId: string, branches: BranchRow[]): Promi
   branches.forEach((b, index) => {
     const row = catalogs[index].find((r) => r.product_id === productId) as RpcRow | undefined
     const text = (n?: number | null) => (n === null || n === undefined ? "" : String(n))
-    branchDrafts[b.id] = row
+    branchDrafts[b.id] = row && !row.setup_incomplete
       ? {
           available: true,
           branchCode: row.branch_code ?? "",
@@ -171,7 +172,10 @@ export async function loadDraft(productId: string, branches: BranchRow[]): Promi
           stock: text(row.stock_quantity),
           touched: false,
         }
-      : emptyBranch(false)
+      : {
+          ...emptyBranch(b.id === defaultBranchId),
+          touched: !!row?.setup_incomplete && b.id === defaultBranchId,
+        }
   })
 
   return {
@@ -254,7 +258,7 @@ export async function saveDraft(
   branches: BranchRow[],
 ) {
   let categoryId = draft.categoryId || null
-  if (draft.newCategoryEn.trim() && can.editProducts(profile)) {
+  if (!draft.isNew && draft.newCategoryEn.trim() && can.editProducts(profile)) {
     const { data, error } = await supabase
       .from("categories")
       .insert({
@@ -279,7 +283,36 @@ export async function saveDraft(
     }
     if (draft.isNew) {
       for (let attempt = 0; attempt < 4; attempt++) {
-        const { error } = await supabase.from("products").insert({ id, product_code: code, ...fields })
+        const branchProducts = branches.flatMap((branch) => {
+          const b = draft.branches[branch.id]
+          if (!b) return []
+          const untouchedEmpty =
+            !b.available && !b.purchase && !b.wholesale && !b.retail && !b.stock && !b.branchCode
+          if (untouchedEmpty) return []
+          return [{
+            branch_id: branch.id,
+            is_available: b.available,
+            branch_code: b.branchCode.trim() || null,
+            purchase_price: can.edit(profile, "purchase") ? num(b.purchase) : null,
+            wholesale_price: can.edit(profile, "wholesale") ? num(b.wholesale) : null,
+            retail_price: can.edit(profile, "retail") ? num(b.retail) : null,
+            track_stock: b.trackStock,
+            stock_quantity: b.trackStock && b.stock.trim() !== "" ? Math.round(Number(b.stock)) : null,
+          }]
+        })
+        const { error } = await supabase.rpc("create_product_atomic", {
+          p_product_id: id,
+          p_product_code: code,
+          p_name_en: fields.name_en,
+          p_name_ar: fields.name_ar,
+          p_description_en: fields.description_en,
+          p_description_ar: fields.description_ar,
+          p_category_id: categoryId,
+          p_new_category_en: categoryId ? null : draft.newCategoryEn.trim() || null,
+          p_new_category_ar: categoryId ? null : draft.newCategoryAr.trim() || null,
+          p_barcodes: [...new Set(draft.barcodes.map((barcode) => barcode.trim()).filter(Boolean))],
+          p_branch_products: branchProducts,
+        })
         if (!error) break
         if (error.code === "23505" && draft.codeAuto && attempt < 3) {
           code = await nextProductCode()
@@ -293,33 +326,35 @@ export async function saveDraft(
         .update({ product_code: code, ...fields, updated_at: new Date().toISOString() })
         .eq("id", id)
       if (error) throw error
+      await commitBarcodes(id, draft.barcodes, original?.barcodes ?? [])
     }
 
-    await commitBarcodes(id, draft.barcodes, original?.barcodes ?? [])
     await commitImages(id, draft.images, original?.images ?? [], profile)
   }
 
-  for (const branch of branches) {
-    const b = draft.branches[branch.id]
-    if (!b) continue
-    const loaded = original?.branches[branch.id]
-    const untouchedEmpty =
-      !b.available && !b.purchase && !b.wholesale && !b.retail && !b.stock && !b.branchCode
-    if (untouchedEmpty && !loaded?.available) continue
-    if (!b.touched && !draft.isNew) continue
+  if (!draft.isNew) {
+    for (const branch of branches) {
+      const b = draft.branches[branch.id]
+      if (!b) continue
+      const loaded = original?.branches[branch.id]
+      const untouchedEmpty =
+        !b.available && !b.purchase && !b.wholesale && !b.retail && !b.stock && !b.branchCode
+      if (untouchedEmpty && !loaded?.available) continue
+      if (!b.touched) continue
 
-    const { error } = await supabase.rpc("upsert_branch_product", {
-      p_branch_id: branch.id,
-      p_product_id: id,
-      p_is_available: b.available,
-      p_branch_code: b.branchCode.trim() || null,
-      p_purchase_price: can.edit(profile, "purchase") ? num(b.purchase) : null,
-      p_wholesale_price: can.edit(profile, "wholesale") ? num(b.wholesale) : null,
-      p_retail_price: can.edit(profile, "retail") ? num(b.retail) : null,
-      p_track_stock: b.trackStock,
-      p_stock_quantity: b.trackStock && b.stock.trim() !== "" ? Math.round(Number(b.stock)) : null,
-    })
-    if (error) throw error
+      const { error } = await supabase.rpc("upsert_branch_product", {
+        p_branch_id: branch.id,
+        p_product_id: id,
+        p_is_available: b.available,
+        p_branch_code: b.branchCode.trim() || null,
+        p_purchase_price: can.edit(profile, "purchase") ? num(b.purchase) : null,
+        p_wholesale_price: can.edit(profile, "wholesale") ? num(b.wholesale) : null,
+        p_retail_price: can.edit(profile, "retail") ? num(b.retail) : null,
+        p_track_stock: b.trackStock,
+        p_stock_quantity: b.trackStock && b.stock.trim() !== "" ? Math.round(Number(b.stock)) : null,
+      })
+      if (error) throw error
+    }
   }
 
   return { id, code }
