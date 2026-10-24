@@ -203,6 +203,43 @@ export async function makeDraftImage(file: File): Promise<DraftImage> {
   return { key: crypto.randomUUID(), blob, url: URL.createObjectURL(blob), is_primary: false }
 }
 
+export async function replaceStoredProductImage(productId: string, imageId: string, image: Blob) {
+  const storage = supabase.storage.from(BUCKET)
+  const { data: current, error: readError } = await supabase
+    .from("product_images")
+    .select("id,storage_path")
+    .eq("id", imageId)
+    .eq("product_id", productId)
+    .single()
+  if (readError) throw readError
+
+  const nextPath = `products/${productId}/${crypto.randomUUID()}.webp`
+  const { error: uploadError } = await storage.upload(nextPath, image, {
+    contentType: "image/webp",
+    cacheControl: "31536000",
+    upsert: false,
+  })
+  if (uploadError) throw uploadError
+
+  const nextUrl = storage.getPublicUrl(nextPath).data.publicUrl
+  const { data: updated, error: updateError } = await supabase
+    .from("product_images")
+    .update({ storage_path: nextPath, image_url: nextUrl })
+    .eq("id", imageId)
+    .eq("product_id", productId)
+    .eq("storage_path", current.storage_path)
+    .select("id")
+    .maybeSingle()
+
+  if (updateError || !updated) {
+    await storage.remove([nextPath]).catch(() => undefined)
+    throw updateError ?? new Error("IMAGE_UPDATE_CONFLICT")
+  }
+
+  const { error: cleanupError } = await storage.remove([current.storage_path])
+  return { storage_path: nextPath, url: nextUrl, oldFileRemoved: !cleanupError }
+}
+
 function num(value: string) {
   if (value.trim() === "") return null
   const n = Number(value)

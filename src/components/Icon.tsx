@@ -116,6 +116,7 @@ const icons = {
       "M9 9.25h.01",
     ],
   },
+  check: { paths: ["M5 12.5l4.25 4.25L19 7"] },
   x: { paths: ["M6.5 6.5l11 11M17.5 6.5l-11 11"] },
   menu: { paths: ["M4.5 6.75h15M4.5 12h15M4.5 17.25h15"] },
   globe: {

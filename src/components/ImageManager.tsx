@@ -1,20 +1,24 @@
 import { useRef, useState } from "react"
 import { useApp } from "../lib/app-context"
-import { makeDraftImage, type DraftImage } from "../lib/products"
+import { makeDraftImage, replaceStoredProductImage, type DraftImage } from "../lib/products"
+import { compressToWebp } from "../lib/images"
 import Icon from "./Icon"
 import ImageEditor from "./ImageEditor"
 import { useFeedback } from "./FeedbackProvider"
 
 const tool =
   "grid size-8 place-items-center rounded-md bg-black/60 text-white backdrop-blur transition hover:bg-black/80 disabled:opacity-30"
+const imageActionTool =
+  "grid size-11 place-items-center rounded-lg bg-black/60 text-white backdrop-blur transition hover:bg-black/80 disabled:opacity-30"
 
-export default function ImageManager({ images, onChange, disabled }: {
+export default function ImageManager({ images, onChange, productId, disabled }: {
   images: DraftImage[]
   onChange: (next: DraftImage[]) => void
+  productId: string
   disabled?: boolean
 }) {
   const { t } = useApp()
-  const { confirm } = useFeedback()
+  const { confirm, toast } = useFeedback()
   const gallery = useRef<HTMLInputElement>(null)
   const camera = useRef<HTMLInputElement>(null)
   const replaceInput = useRef<HTMLInputElement>(null)
@@ -22,6 +26,7 @@ export default function ImageManager({ images, onChange, disabled }: {
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [cropImage, setCropImage] = useState<DraftImage | null>(null)
 
   const normalise = (list: DraftImage[]) =>
     list.map((image, index) => ({
@@ -42,13 +47,33 @@ export default function ImageManager({ images, onChange, disabled }: {
   }
 
   const applyEditedImage = async (blob: Blob) => {
+    if (cropImage?.id) {
+      const file = new File([blob], `product-${productId}.webp`, { type: "image/webp" })
+      const optimized = await compressToWebp(file)
+      const stored = await replaceStoredProductImage(productId, cropImage.id, optimized)
+      onChange(images.map((image) => image.id === cropImage.id ? {
+        ...image,
+        storage_path: stored.storage_path,
+        url: stored.url,
+        blob: undefined,
+      } : image))
+      toast("success", t("imageUpdated"))
+      if (!stored.oldFileRemoved) toast("info", t("imageOldFileCleanupFailed"))
+      setCropImage(null)
+      return
+    }
+
     const file = pendingFiles[0]
     if (!file) return
     setBusy(true)
     try {
       const fresh = await makeDraftImage(new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" }))
       const key = replaceKey.current
-      if (key) onChange(images.map((image) => image.key === key ? { ...fresh, is_primary: image.is_primary } : image))
+      if (key) {
+        const previous = images.find((image) => image.key === key)
+        if (previous?.blob) URL.revokeObjectURL(previous.url)
+        onChange(images.map((image) => image.key === key ? { ...fresh, is_primary: image.is_primary } : image))
+      }
       else onChange(normalise([...images, fresh]))
       setPendingFiles((files) => files.slice(1))
       if (key) replaceKey.current = null
@@ -100,7 +125,12 @@ export default function ImageManager({ images, onChange, disabled }: {
                 <button type="button" className={tool} onClick={() => { replaceKey.current = image.key; replaceInput.current?.click() }} title={t("replace")} aria-label={t("replace")}>
                   <Icon name="upload" className="size-4" />
                 </button>
-                <button type="button" className={tool} onClick={() => remove(image.key)} title={t("remove")} aria-label={t("remove")}>
+                {image.id && image.storage_path && (
+                  <button type="button" className={imageActionTool} disabled={busy} onClick={() => setCropImage(image)} title={t("editCrop")} aria-label={t("editCrop")}>
+                    <Icon name="pencil" className="size-4" />
+                  </button>
+                )}
+                <button type="button" className={imageActionTool} onClick={() => remove(image.key)} title={t("remove")} aria-label={t("remove")}>
                   <Icon name="trash" className="size-4" />
                 </button>
               </figcaption>
@@ -138,10 +168,13 @@ export default function ImageManager({ images, onChange, disabled }: {
           </button>
         </div>
       )}
-      {pendingFiles[0] && (
+      {(cropImage || pendingFiles[0]) && (
         <ImageEditor
-          file={pendingFiles[0]}
-          onCancel={() => { setPendingFiles([]); replaceKey.current = null }}
+          source={cropImage?.url ?? pendingFiles[0]}
+          onCancel={() => {
+            if (cropImage) setCropImage(null)
+            else { setPendingFiles([]); replaceKey.current = null }
+          }}
           onApply={applyEditedImage}
         />
       )}

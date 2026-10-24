@@ -342,7 +342,7 @@ export default function ProductForm({ initial, original, profile, branches, cate
 
       <section className={card}>
         <h2 className="mb-4 font-display text-lg font-semibold text-ink">{t("images")}</h2>
-        <ImageManager images={draft.images} onChange={(images) => patch({ images })} disabled={!editProducts} />
+        <ImageManager productId={draft.id} images={draft.images} onChange={(images) => patch({ images })} disabled={!editProducts} />
       </section>
 
       <section className={card}>
