@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useApp } from "../lib/app-context"
 import { scanFeedback } from "../lib/feedback"
 import Icon from "./Icon"
@@ -23,6 +24,15 @@ export default function CameraScannerModal({ open, onClose, onScan, mode = "sing
   const scannerRef = useRef<Scanner | null>(null)
   const callbacks = useRef({ onClose, onScan })
   callbacks.current = { onClose, onScan }
+
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -121,14 +131,20 @@ export default function CameraScannerModal({ open, onClose, onScan, mode = "sing
   }
 
   if (!open) return null
-  return (
-    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={t("scanBarcode")}>
-      <section className="w-full max-w-xl overflow-hidden rounded-t-3xl border border-white/15 bg-surface shadow-2xl pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-3xl sm:pb-0">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex h-screen w-screen items-center justify-center px-4 py-4"
+      style={{ height: "100dvh", backgroundColor: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(4px)" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("scanBarcode")}
+    >
+      <section className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl border border-white/15 bg-surface shadow-2xl">
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:pt-3">
           <div className="flex min-w-0 items-center gap-2 font-semibold text-ink"><Icon name="camera" className="size-5 text-brand" />{t("scanBarcode")}</div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => { if (torchSupported) void toggleTorch() }} disabled={!torchSupported} aria-pressed={torchOn} aria-label={torchSupported ? t("toggleTorch") : t("torchUnavailable")} title={torchSupported ? t("toggleTorch") : t("torchUnavailable")} className={"grid size-11 place-items-center rounded-full " + (torchOn ? "bg-accent text-brand-deep" : "text-ink2 hover:bg-surface2 disabled:opacity-40")}><Icon name="sparkle" className="size-5" /></button>
-            <button type="button" onClick={onClose} aria-label={t("closeCamera")} className="grid size-11 place-items-center rounded-full text-ink2 hover:bg-surface2"><Icon name="x" className="size-5" /></button>
+            <button type="button" onClick={onClose} aria-label={t("closeCamera")} className="grid size-12 place-items-center rounded-full text-ink2 hover:bg-surface2"><Icon name="x" className="size-5" /></button>
           </div>
         </header>
         <div id={readerId} className="mx-auto min-h-52 w-full overflow-hidden bg-black sm:min-h-64" />
@@ -143,7 +159,8 @@ export default function CameraScannerModal({ open, onClose, onScan, mode = "sing
           </div>
         ) : <p className="p-4 text-center text-sm text-ink2">{t(mode === "continuous" ? "cameraContinuousHint" : "cameraHint")}</p>}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

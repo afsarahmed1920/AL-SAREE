@@ -4,7 +4,7 @@ import Icon from "./Icon"
 
 const PREVIEW_SIZE = 640
 const OUTPUT_SIZE = 800
-const MIN_CROP_SIZE = 96
+const MIN_CROP_SIZE = 32
 type CropRect = { x: number; y: number; size: number }
 type Handle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw"
 type Drag = { kind: "move" | Handle; x: number; y: number; crop: CropRect }
@@ -42,9 +42,13 @@ export default function ImageEditor({ source, onCancel, onApply }: {
   const stageRef = useRef<HTMLDivElement>(null)
   const bitmapRef = useRef<ImageBitmap | null>(null)
   const dragRef = useRef<Drag | null>(null)
+  const cropRef = useRef<CropRect | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const edgeRef = useRef<Set<string>>(new Set())
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [dragging, setDragging] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [brightness, setBrightness] = useState(100)
   const [contrast, setContrast] = useState(100)
@@ -62,13 +66,16 @@ export default function ImageEditor({ source, onCancel, onApply }: {
       setRotation(0)
       setBrightness(100)
       setContrast(100)
-      setCrop(createInitialCrop(bitmap, 0))
+      const initialCrop = createInitialCrop(bitmap, 0)
+      cropRef.current = initialCrop
+      setCrop(initialCrop)
       setReady(true)
     }).catch(() => {
       if (active) setError(t("imageEditFailed"))
     })
     return () => {
       active = false
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
       bitmapRef.current?.close()
       bitmapRef.current = null
     }
@@ -85,15 +92,23 @@ export default function ImageEditor({ source, onCancel, onApply }: {
 
   const changeRotation = (next: number) => {
     const bitmap = bitmapRef.current
-    if (bitmap) setCrop((current) => fitCrop(current, bitmap, next))
+    if (bitmap) {
+      const nextCrop = fitCrop(cropRef.current, bitmap, next)
+      cropRef.current = nextCrop
+      setCrop(nextCrop)
+    }
     setRotation(next)
   }
 
   const beginDrag = (event: PointerEvent<HTMLElement>, kind: Drag["kind"]) => {
-    if (!crop || !stageRef.current) return
+    const activeCrop = cropRef.current
+    const bitmap = bitmapRef.current
+    if (!activeCrop || !bitmap || !stageRef.current) return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { kind, x: event.clientX, y: event.clientY, crop }
+    dragRef.current = { kind, x: event.clientX, y: event.clientY, crop: activeCrop }
+    edgeRef.current = touchedEdges(activeCrop, imageBounds(bitmap, rotation))
+    setDragging(true)
   }
 
   const moveDrag = (event: PointerEvent<HTMLElement>) => {
@@ -103,10 +118,31 @@ export default function ImageEditor({ source, onCancel, onApply }: {
     if (!drag || !bitmap || !stage) return
     const bounds = imageBounds(bitmap, rotation)
     const scale = PREVIEW_SIZE / Math.max(1, stage.getBoundingClientRect().width)
-    setCrop(resizeOrMoveCrop(drag.crop, drag.kind, (event.clientX - drag.x) * scale, (event.clientY - drag.y) * scale, bounds))
+    const next = resizeOrMoveCrop(drag.crop, drag.kind, (event.clientX - drag.x) * scale, (event.clientY - drag.y) * scale, bounds)
+    cropRef.current = next
+    if (drag.kind !== "move") {
+      const nextEdges = touchedEdges(next, bounds)
+      if ([...nextEdges].some((edge) => !edgeRef.current.has(edge))) navigator.vibrate?.(10)
+      edgeRef.current = nextEdges
+    }
+    if (frameRef.current === null) {
+      frameRef.current = requestAnimationFrame(() => {
+        setCrop(cropRef.current)
+        frameRef.current = null
+      })
+    }
   }
 
-  const stopDrag = () => { dragRef.current = null }
+  const stopDrag = () => {
+    dragRef.current = null
+    edgeRef.current.clear()
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
+    setCrop(cropRef.current)
+    setDragging(false)
+  }
 
   const moveByKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) || !crop || !bitmapRef.current) return
@@ -114,7 +150,9 @@ export default function ImageEditor({ source, onCancel, onApply }: {
     const step = event.shiftKey ? 16 : 4
     const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0
     const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0
-    setCrop(resizeOrMoveCrop(crop, "move", dx, dy, imageBounds(bitmapRef.current, rotation)))
+    const next = resizeOrMoveCrop(crop, "move", dx, dy, imageBounds(bitmapRef.current, rotation))
+    cropRef.current = next
+    setCrop(next)
   }
 
   const resizeByKeyboard = (event: KeyboardEvent<HTMLButtonElement>, handle: Handle) => {
@@ -122,12 +160,15 @@ export default function ImageEditor({ source, onCancel, onApply }: {
     event.preventDefault()
     const dx = event.key === "ArrowLeft" ? -8 : event.key === "ArrowRight" ? 8 : 0
     const dy = event.key === "ArrowUp" ? -8 : event.key === "ArrowDown" ? 8 : 0
-    setCrop(resizeOrMoveCrop(crop, handle, dx, dy, imageBounds(bitmapRef.current, rotation)))
+    const next = resizeOrMoveCrop(crop, handle, dx, dy, imageBounds(bitmapRef.current, rotation))
+    cropRef.current = next
+    setCrop(next)
   }
 
   const apply = async () => {
     const bitmap = bitmapRef.current
-    if (!bitmap || !crop) return
+    const finalCrop = cropRef.current ?? crop
+    if (!bitmap || !finalCrop) return
     setBusy(true)
     setError("")
     try {
@@ -137,87 +178,113 @@ export default function ImageEditor({ source, onCancel, onApply }: {
       const outputContext = output.getContext("2d")
       if (!outputContext) throw new Error("Canvas unavailable")
       outputContext.imageSmoothingQuality = "high"
-      drawCroppedImage(outputContext, bitmap, crop, rotation, brightness, contrast)
+      drawCroppedImage(outputContext, bitmap, finalCrop, rotation, brightness, contrast)
       const blob = await new Promise<Blob>((resolve, reject) => output.toBlob((result) => result ? resolve(result) : reject(new Error("Image encoding failed")), "image/webp", 0.9))
       await onApply(blob)
     } catch {
       setError(t(typeof source === "string" ? "imageUpdateFailed" : "imageEditFailed"))
+    } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/75 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="image-editor-title">
-      <section className="my-auto w-full max-w-lg rounded-3xl border border-line bg-surface p-4 shadow-2xl sm:p-5">
-        <header className="mb-3 grid grid-cols-2 gap-2">
-          <button type="button" disabled={busy} onClick={onCancel} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-line2 px-3 text-sm font-semibold text-ink disabled:opacity-50">
-            <Icon name="x" className="size-4" />{t("cancel")}
+    <div className="fixed inset-0 z-[80] flex flex-col bg-black/65 text-white backdrop-blur-xl" role="dialog" aria-modal="true" aria-labelledby="image-editor-title">
+      <section className="flex min-h-0 flex-1 flex-col px-4 pt-[max(12px,env(safe-area-inset-top))] pb-[max(12px,env(safe-area-inset-bottom))]">
+        <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <button type="button" disabled={busy} onClick={onCancel} className="inline-flex h-12 min-w-12 items-center justify-center gap-2 justify-self-start rounded-full bg-white/10 px-4 text-sm font-semibold text-white backdrop-blur-md disabled:opacity-50">
+            <Icon name="x" className="size-5" />{t("cancel")}
           </button>
-          <button type="button" disabled={busy || !ready || !crop} onClick={() => void apply()} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand px-3 text-sm font-semibold text-on-brand disabled:opacity-50">
-            {busy ? <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Icon name="check" className="size-4" />}
+          <button type="button" disabled={busy} onClick={() => changeRotation(rotation + 90)} className="grid size-12 place-items-center rounded-full bg-white/10 text-white backdrop-blur-md disabled:opacity-50" aria-label={t("rotateRight")} title={t("rotateRight")}>
+            <Icon name="rotate" className="size-5" />
+          </button>
+          <button type="button" disabled={busy || !ready || !crop} onClick={() => void apply()} className="inline-flex h-12 min-w-12 items-center justify-center gap-2 justify-self-end rounded-full bg-brand px-4 text-sm font-bold text-on-brand shadow-lg shadow-brand/20 disabled:opacity-50">
+            {busy ? <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Icon name="check" className="size-5" />}
             {t("applyCrop")}
           </button>
-          <h2 id="image-editor-title" className="col-span-2 text-center font-display text-base font-semibold text-ink">{t("imageEditorTitle")}</h2>
         </header>
-        <div ref={stageRef} className="relative mx-auto aspect-square w-full max-w-sm overflow-hidden rounded-xl bg-black">
-          <canvas ref={canvasRef} width={PREVIEW_SIZE} height={PREVIEW_SIZE} className="absolute inset-0 size-full" />
-          {mode === "crop" && crop && (
-            <div
-              className="absolute touch-none border-2 border-white shadow-[0_0_0_999px_rgba(0,0,0,0.48)]"
-              style={{ left: (crop.x / PREVIEW_SIZE * 100) + "%", top: (crop.y / PREVIEW_SIZE * 100) + "%", width: (crop.size / PREVIEW_SIZE * 100) + "%", height: (crop.size / PREVIEW_SIZE * 100) + "%" }}
-              onPointerDown={(event) => beginDrag(event, "move")}
-              onPointerMove={moveDrag}
-              onPointerUp={stopDrag}
-              onPointerCancel={stopDrag}
-              onKeyDown={moveByKeyboard}
-              tabIndex={0}
-              aria-label={t("cropMove")}
-              role="group"
-            >
-              {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as Handle[]).map((handle) => (
-                <button
-                  key={handle}
-                  type="button"
-                  aria-label={t(handleLabels[handle])}
-                  onPointerDown={(event) => { event.stopPropagation(); beginDrag(event, handle) }}
-                  onPointerMove={moveDrag}
-                  onPointerUp={stopDrag}
-                  onPointerCancel={stopDrag}
-                  onKeyDown={(event) => resizeByKeyboard(event, handle)}
-                  className={"absolute z-10 rounded-full border-2 border-brand-deep bg-white shadow " + handlePosition[handle]}
-                />
-              ))}
+        <h2 id="image-editor-title" className="mt-4 shrink-0 text-center font-display text-sm font-semibold text-white/80">{t("imageEditorTitle")}</h2>
+        <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+          <div ref={stageRef} className="relative aspect-square max-h-full w-[min(92vw,64svh)] max-w-[640px] overflow-hidden rounded-2xl bg-[#111827] shadow-2xl shadow-black/30">
+            <canvas ref={canvasRef} width={PREVIEW_SIZE} height={PREVIEW_SIZE} className="absolute inset-0 size-full" />
+            {mode === "crop" && crop && (
+              <div
+                className="absolute touch-none border border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)]"
+                style={{ left: (crop.x / PREVIEW_SIZE * 100) + "%", top: (crop.y / PREVIEW_SIZE * 100) + "%", width: (crop.size / PREVIEW_SIZE * 100) + "%", height: (crop.size / PREVIEW_SIZE * 100) + "%" }}
+                onPointerDown={(event) => beginDrag(event, "move")}
+                onPointerMove={moveDrag}
+                onPointerUp={stopDrag}
+                onPointerCancel={stopDrag}
+                onLostPointerCapture={stopDrag}
+                onKeyDown={moveByKeyboard}
+                tabIndex={0}
+                aria-label={t("cropMove")}
+                role="group"
+              >
+                <div aria-hidden="true" className={"pointer-events-none absolute inset-0 transition-opacity duration-200 " + (dragging ? "opacity-100" : "opacity-0")}>
+                  <span className="absolute inset-y-0 left-1/3 border-s border-white/55" />
+                  <span className="absolute inset-y-0 left-2/3 border-s border-white/55" />
+                  <span className="absolute inset-x-0 top-1/3 border-t border-white/55" />
+                  <span className="absolute inset-x-0 top-2/3 border-t border-white/55" />
+                </div>
+                {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as Handle[]).map((handle) => (
+                  <button
+                    key={handle}
+                    type="button"
+                    aria-label={t(handleLabels[handle])}
+                    onPointerDown={(event) => { event.stopPropagation(); beginDrag(event, handle) }}
+                    onKeyDown={(event) => resizeByKeyboard(event, handle)}
+                    className={"absolute z-10 grid touch-none place-items-center bg-transparent p-0 " + handlePosition[handle]}
+                  >
+                    {isCornerHandle(handle) ? <CornerBracket corner={handle} /> : <span aria-hidden="true" className={"rounded-full bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.4)] " + ((handle === "n" || handle === "s") ? "h-1 w-8" : "h-8 w-1")} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <footer className="mx-auto w-full max-w-lg shrink-0">
+          <div className="grid grid-cols-2 gap-1 rounded-full border border-white/10 bg-white/10 p-1 backdrop-blur-lg">
+            <button type="button" aria-pressed={mode === "crop"} onClick={() => setMode("crop")}
+              className={"inline-flex h-12 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition-colors " + (mode === "crop" ? "bg-white text-slate-950" : "text-white/70")}>
+              <Icon name="scan" className="size-4" /> {t("squareCrop")}
+            </button>
+            <button type="button" aria-pressed={mode === "adjust"} onClick={() => setMode("adjust")}
+              className={"inline-flex h-12 items-center justify-center rounded-full px-4 text-sm font-semibold transition-colors " + (mode === "adjust" ? "bg-white text-slate-950" : "text-white/70")}>
+              {t("adjustImage")}
+            </button>
+          </div>
+          {mode === "crop" ? (
+            <p className="mt-3 text-center text-xs text-white/65">{t("cropFrameHint")}</p>
+          ) : (
+            <div className="mt-3 grid gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-lg">
+              <Range dark label={t("brightness")} value={brightness} min={60} max={140} onChange={setBrightness} />
+              <Range dark label={t("contrast")} value={contrast} min={60} max={160} onChange={setContrast} />
             </div>
           )}
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-surface2 p-1">
-          <button type="button" aria-pressed={mode === "crop"} onClick={() => setMode("crop")}
-            className={"inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold " + (mode === "crop" ? "bg-surface text-ink shadow-sm" : "text-ink2")}>
-            <Icon name="scan" className="size-4" /> {t("squareCrop")}
-          </button>
-          <button type="button" aria-pressed={mode === "adjust"} onClick={() => setMode("adjust")}
-            className={"inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-semibold " + (mode === "adjust" ? "bg-surface text-ink shadow-sm" : "text-ink2")}>
-            {t("adjustImage")}
-          </button>
-        </div>
-        {mode === "crop" ? (
-          <>
-            <p className="mt-2 text-center text-xs text-ink2">{t("cropFrameHint")}</p>
-            <div className="mt-3 flex justify-center gap-2">
-              <button type="button" onClick={() => changeRotation(rotation - 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="left" className="size-4" />{t("rotateLeft")}</button>
-              <button type="button" onClick={() => changeRotation(rotation + 90)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line2 px-3 text-sm font-medium text-ink"><Icon name="right" className="size-4" />{t("rotateRight")}</button>
-            </div>
-          </>
-        ) : (
-          <div className="mt-4 grid gap-3">
-            <Range label={t("brightness")} value={brightness} min={60} max={140} onChange={setBrightness} />
-            <Range label={t("contrast")} value={contrast} min={60} max={160} onChange={setContrast} />
-          </div>
-        )}
-        {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
+          {error && <p role="alert" className="mt-3 rounded-xl bg-red-500/15 p-3 text-sm text-red-100">{error}</p>}
+        </footer>
       </section>
     </div>
   )
+}
+
+function CornerBracket({ corner }: { corner: Extract<Handle, "ne" | "nw" | "se" | "sw"> }) {
+  const paths = {
+    nw: "M22 6H6v16",
+    ne: "M26 6h16v16",
+    sw: "M6 26v16h16",
+    se: "M42 26v16H26",
+  }
+  return (
+    <svg viewBox="0 0 48 48" className="size-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]" aria-hidden="true">
+      <path d={paths[corner]} fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function isCornerHandle(handle: Handle): handle is Extract<Handle, "ne" | "nw" | "se" | "sw"> {
+  return handle.length === 2
 }
 
 async function loadBitmap(source: File | string) {
@@ -246,6 +313,15 @@ function imageBounds(bitmap: ImageBitmap, rotation: number) {
   const x = Math.max(0, (PREVIEW_SIZE - width) / 2)
   const y = Math.max(0, (PREVIEW_SIZE - height) / 2)
   return { x, y, right: Math.min(PREVIEW_SIZE, (PREVIEW_SIZE + width) / 2), bottom: Math.min(PREVIEW_SIZE, (PREVIEW_SIZE + height) / 2) }
+}
+
+function touchedEdges(crop: CropRect, bounds: ReturnType<typeof imageBounds>) {
+  const edges = new Set<string>()
+  if (crop.x <= bounds.x + 0.5) edges.add("left")
+  if (crop.y <= bounds.y + 0.5) edges.add("top")
+  if (crop.x + crop.size >= bounds.right - 0.5) edges.add("right")
+  if (crop.y + crop.size >= bounds.bottom - 0.5) edges.add("bottom")
+  return edges
 }
 
 function createInitialCrop(bitmap: ImageBitmap, rotation: number): CropRect {
@@ -321,9 +397,9 @@ function drawCroppedImage(context: CanvasRenderingContext2D, bitmap: ImageBitmap
   context.restore()
 }
 
-function Range({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+function Range({ label, value, min, max, onChange, dark = false }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; dark?: boolean }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-ink2">
+    <label className={"grid gap-1 text-xs font-medium " + (dark ? "text-white/80" : "text-ink2")}>
       <span className="flex justify-between gap-2"><span>{label}</span><span>{value}%</span></span>
       <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-full accent-brand" />
     </label>

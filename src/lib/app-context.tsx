@@ -101,7 +101,7 @@ const dict = {
   cropResizeSouthEast: { en: "Resize crop from bottom right", ar: "تغيير حجم القص من أسفل اليمين" },
   cropResizeSouthWest: { en: "Resize crop from bottom left", ar: "تغيير حجم القص من أسفل اليسار" },
   editCrop: { en: "Edit / Re-crop", ar: "تعديل / إعادة القص" },
-  applyCrop: { en: "Apply Crop", ar: "تطبيق القص" },
+  applyCrop: { en: "Done", ar: "تم" },
   rotateLeft: { en: "Rotate left", ar: "تدوير لليسار" },
   rotateRight: { en: "Rotate right", ar: "تدوير لليمين" },
   brightness: { en: "Brightness", ar: "السطوع" },
